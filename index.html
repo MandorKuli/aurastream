@@ -568,6 +568,7 @@
       const imgElements = document.querySelectorAll('img');
       imgElements.forEach(img => {
         img.onerror = function() {
+          this.onerror = null; // Prevent infinite loop if fallback fails
           const text = this.alt || 'AS';
           this.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="%231a1e30"/><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%238b5cf6"/><stop offset="100%" stop-color="%236366f1"/></linearGradient></defs><rect width="200" height="200" fill="url(%23g)" opacity="0.65"/><text x="50%" y="55%" font-family="Outfit, sans-serif" font-size="28" font-weight="bold" fill="white" text-anchor="middle">${encodeURIComponent(text.substr(0,12))}</text></svg>`;
         };
