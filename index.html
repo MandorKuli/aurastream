@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AuraStream — Premium Music Streaming</title>
+
+  <!-- Primary Meta Tags -->
+  <meta name="title" content="AuraStream — Premium Music Streaming">
+  <meta name="description" content="Stream millions of tracks from Audius, iTunes & YouTube, or play your own uploads — all in your browser, no account needed.">
+  <meta name="keywords" content="music streaming, audius, itunes, youtube music, local music player, web player, aurastream">
+  <meta name="author" content="AuraStream">
+  <meta name="theme-color" content="#8b5cf6">
+
+  <!-- Open Graph / Facebook / WhatsApp / IG -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://fahmifarid.github.io/aurastream/">
+  <meta property="og:title" content="AuraStream — Premium Music Streaming">
+  <meta property="og:description" content="Stream millions of tracks from Audius, iTunes & YouTube, or play your own uploads — all in your browser, no account needed.">
+  <meta property="og:image" content="https://fahmifarid.github.io/aurastream/assets/og-banner.png">
+
+  <!-- Twitter / X -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://fahmifarid.github.io/aurastream/">
+  <meta name="twitter:title" content="AuraStream — Premium Music Streaming">
+  <meta name="twitter:description" content="Stream millions of tracks from Audius, iTunes & YouTube, or play your own uploads — all in your browser, no account needed.">
+  <meta name="twitter:image" content="https://fahmifarid.github.io/aurastream/assets/og-banner.png">
+
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AuraStream">
+
+  <!-- Google Fonts & FontAwesome CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===================== SPLASH SCREEN ===================== -->
+  <div id="splash-screen" class="splash-screen">
+    <div class="splash-content">
+      <div class="splash-logo">
+        <div class="splash-disc">
+          <i class="fa-solid fa-compact-disc"></i>
+        </div>
+      </div>
+      <div class="splash-brand">
+        <span class="logo-text" style="font-size: 2.2rem;">AuraStream</span>
+        <p class="splash-tagline">Premium Music, Everywhere.</p>
+      </div>
+      <div class="splash-loader">
+        <div class="splash-bar"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MAIN APP ===================== -->
+  <div class="app-container" id="app-root" style="opacity: 0;">
+
+    <!-- Mobile Hamburger Toggle -->
+    <button class="hamburger-btn" id="hamburger-btn" aria-label="Open menu" title="Menu">
+      <i class="fa-solid fa-bars"></i>
+    </button>
+    <!-- Mobile sidebar overlay backdrop -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar" id="sidebar">
+      <div class="logo-container">
+        <i class="fa-solid fa-wand-magic-sparkles" style="color: var(--primary); font-size: 1.6rem; text-shadow: 0 0 10px var(--primary-glow);"></i>
+        <span class="logo-text">AuraStream</span>
+      </div>
+
+      <nav class="menu-group">
+        <h3 class="menu-title">Explore</h3>
+        <ul class="menu-items">
+          <li class="menu-item active" data-view="home">
+            <a class="menu-link"><i class="fa-solid fa-compass"></i> Discover</a>
+          </li>
+          <li class="menu-item" data-view="search">
+            <a class="menu-link"><i class="fa-solid fa-magnifying-glass"></i> Search</a>
+          </li>
+        </ul>
+      </nav>
+
+      <nav class="menu-group">
+        <h3 class="menu-title">Your Library</h3>
+        <ul class="menu-items">
+          <li class="menu-item" data-view="favorites">
+            <a class="menu-link"><i class="fa-solid fa-heart"></i> Favorites</a>
+          </li>
+          <li class="menu-item" data-view="playlists">
+            <a class="menu-link"><i class="fa-solid fa-music"></i> Playlists</a>
+          </li>
+          <li class="menu-item" data-view="upload">
+            <a class="menu-link"><i class="fa-solid fa-cloud-arrow-up"></i> Upload Music</a>
+          </li>
+        </ul>
+      </nav>
+
+      <nav class="menu-group" style="flex-grow: 1; display: flex; flex-direction: column;">
+        <h3 class="menu-title">My Playlists</h3>
+        <div class="sidebar-playlists" id="sidebar-playlists-list">
+          <!-- Playlists dynamically loaded here -->
+        </div>
+      </nav>
+
+      <!-- User Widget -->
+      <div class="user-profile">
+        <div class="user-avatar">AS</div>
+        <div class="user-info">
+          <span class="user-name">Local User</span>
+          <span class="user-status"><i class="fa-solid fa-database" style="font-size: 0.75rem; margin-right: 4px;"></i> IndexedDB Active</span>
+        </div>
+        <button class="info-btn" id="about-btn" title="About AuraStream">
+          <i class="fa-solid fa-circle-info"></i>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <div class="content-wrapper">
+        
+        <!-- Header bar (Includes search quick actions) -->
+        <header class="header-bar">
+          <div class="search-box">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="global-search-input" placeholder="Search songs, artists, or uploaded tracks...">
+          </div>
+          
+          <div style="display: flex; gap: 12px;">
+            <button class="hero-btn" id="header-visualizer-btn" style="padding: 8px 16px; font-size: 0.85rem; background-color: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); box-shadow: none;">
+              <i class="fa-solid fa-chart-simple"></i> Visualizer
+            </button>
+          </div>
+        </header>
+
+        <!-- VIEWS -->
+
+        <!-- 1. Discover / Home View -->
+        <section id="view-home" class="content-view active">
+          <!-- Hero Banner -->
+          <div class="hero-banner">
+            <div class="hero-info">
+              <span class="hero-tag">TRENDING TODAY</span>
+              <h1 class="hero-title">Experience Unlimited Music Streaming</h1>
+              <p class="hero-subtitle">Listen to millions of tracks from Audius and iTunes, or store and play your own collection locally with no limitations.</p>
+              <button class="hero-btn" id="hero-play-trending-btn">
+                <i class="fa-solid fa-play"></i> Play Trending Mix
+              </button>
+            </div>
+            <div class="hero-visual">
+              <div class="hero-visual-art-2" style="background: linear-gradient(135deg, var(--secondary), var(--primary));"></div>
+              <div class="hero-visual-art" style="background: linear-gradient(135deg, var(--primary), #ec4899); display: flex; align-items: center; justify-content: center; font-size: 3rem; color: white;">
+                <i class="fa-solid fa-compact-disc"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Trending Section -->
+          <div class="section-header">
+            <h2 class="section-title">Trending Now</h2>
+            <span class="section-link" style="cursor: pointer;" id="trending-refresh-btn"><i class="fa-solid fa-rotate-right"></i> Refresh</span>
+          </div>
+          
+          <div class="cards-grid" id="trending-grid">
+            <!-- Skeleton loading -->
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+          </div>
+
+          <!-- Local Uploads Quick View -->
+          <div class="section-header">
+            <h2 class="section-title">Your Uploads</h2>
+            <span class="section-link" style="cursor: pointer;" id="home-goto-upload-btn">Upload more <i class="fa-solid fa-chevron-right"></i></span>
+          </div>
+          <div class="cards-grid" id="home-local-grid">
+            <!-- Filled dynamically -->
+          </div>
+        </section>
+
+        <!-- 2. Search View -->
+        <section id="view-search" class="content-view">
+          <div class="section-header" style="flex-direction: column; align-items: flex-start; gap: 16px; margin-bottom: 24px;">
+            <h2 class="section-title" id="search-title-text">Search Results</h2>
+            <!-- Filter badges -->
+            <div class="filter-badges-row">
+              <button class="modal-btn confirm" id="filter-search-all" style="padding: 6px 16px; font-size: 0.8rem;">All Sources</button>
+              <button class="modal-btn cancel" id="filter-search-local" style="padding: 6px 16px; font-size: 0.8rem;"><i class="fa-solid fa-database"></i> Uploaded</button>
+              <button class="modal-btn cancel" id="filter-search-audius" style="padding: 6px 16px; font-size: 0.8rem;"><i class="fa-solid fa-network-wired"></i> Audius</button>
+              <button class="modal-btn cancel" id="filter-search-itunes" style="padding: 6px 16px; font-size: 0.8rem;"><i class="fa-brands fa-apple"></i> iTunes</button>
+              <button class="modal-btn cancel" id="filter-search-youtube" style="padding: 6px 16px; font-size: 0.8rem;"><i class="fa-brands fa-youtube"></i> YouTube</button>
+            </div>
+          </div>
+
+          <div class="tracks-list-container" id="search-results-list">
+            <div class="empty-state">
+              <div class="empty-state-icon"><i class="fa-solid fa-music"></i></div>
+              <div class="empty-state-text">Ready to stream</div>
+              <div class="empty-state-subtext">Search for tracks in the search box above to stream or preview songs from the cloud.</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. Favorites View -->
+        <section id="view-favorites" class="content-view">
+          <div class="section-header">
+            <h2 class="section-title">Your Favorite Songs</h2>
+            <button class="hero-btn" id="play-all-favorites-btn" style="padding: 8px 20px; font-size: 0.9rem;">
+              <i class="fa-solid fa-play"></i> Play All
+            </button>
+          </div>
+          
+          <div class="tracks-list-container" id="favorites-list">
+            <!-- Dynamically populated or empty state -->
+          </div>
+        </section>
+
+        <!-- 4. Playlists View -->
+        <section id="view-playlists" class="content-view">
+          <div class="section-header">
+            <h2 class="section-title">Your Playlists</h2>
+            <button class="hero-btn" id="create-playlist-btn" style="padding: 8px 20px; font-size: 0.9rem;">
+              <i class="fa-solid fa-plus"></i> Create Playlist
+            </button>
+          </div>
+
+          <div class="cards-grid" id="playlists-grid">
+            <!-- Loaded from database -->
+          </div>
+        </section>
+
+        <!-- 5. Playlist Detail View -->
+        <section id="view-playlist-detail" class="content-view">
+          <div id="playlist-detail-content">
+            <!-- Dynamically populated playlist info -->
+          </div>
+        </section>
+
+        <!-- 6. Upload View -->
+        <section id="view-upload" class="content-view">
+          <h2 class="section-title" style="margin-bottom: 24px;">Upload Custom Music File</h2>
+          
+          <div class="upload-container">
+            <!-- File Drag Drop Zone -->
+            <div class="dropzone" id="file-dropzone">
+              <div class="dropzone-icon"><i class="fa-solid fa-music"></i></div>
+              <div class="dropzone-text">Drag &amp; drop your audio file here</div>
+              <div class="dropzone-subtext">Supports MP3 and WAV files (Max 50MB)</div>
+              <span style="margin: 12px 0; color: var(--text-muted);">or</span>
+              <button class="hero-btn" id="browse-files-btn" style="padding: 8px 20px; font-size: 0.85rem;">
+                Browse Files
+              </button>
+              <input type="file" id="audio-file-input" class="file-input" accept="audio/mp3, audio/wav, audio/mpeg">
+            </div>
+
+            <!-- Upload Metadata Form -->
+            <div class="upload-form-card">
+              <h3 class="upload-form-title">Song Metadata</h3>
+              <form id="upload-form" onsubmit="return false;">
+                <div class="form-group">
+                  <label class="form-label" for="upload-title">Song Title *</label>
+                  <input type="text" id="upload-title" class="form-input" placeholder="e.g. Moonlight Sonata" required disabled>
+                </div>
+                
+                <div class="form-group">
+                  <label class="form-label" for="upload-artist">Artist Name *</label>
+                  <input type="text" id="upload-artist" class="form-input" placeholder="e.g. Beethoven" required disabled>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-group">
+                    <label class="form-label" for="upload-album">Album</label>
+                    <input type="text" id="upload-album" class="form-input" placeholder="e.g. Classical Hits" disabled>
+                  </div>
+                  
+                  <div class="form-group">
+                    <label class="form-label" for="upload-genre">Genre</label>
+                    <input type="text" id="upload-genre" class="form-input" placeholder="e.g. Classical" disabled>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label" for="upload-cover">Cover Artwork Image</label>
+                  <input type="file" id="upload-cover" class="file-input" accept="image/*">
+                  <button type="button" class="hero-btn" id="browse-cover-btn" style="width: 100%; justify-content: center; padding: 10px; font-size: 0.85rem; background-color: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); box-shadow: none;" disabled>
+                    <i class="fa-solid fa-image"></i> Select Cover Image (Optional)
+                  </button>
+                  <div id="cover-preview-filename" style="margin-top: 8px; font-size: 0.8rem; color: var(--accent); display: none;"></div>
+                </div>
+
+                <div id="upload-file-feedback" style="margin-bottom: 16px; font-size: 0.85rem; color: var(--text-secondary);">
+                  No file selected. Please select or drag a file to fill the form.
+                </div>
+
+                <button type="submit" class="upload-submit-btn" id="upload-submit-btn" disabled>
+                  Save Track to IndexedDB
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <div class="section-header">
+            <h2 class="section-title">Your Saved Library</h2>
+            <button class="playlist-delete-btn" id="delete-all-local-btn" style="padding: 6px 12px; font-size: 0.8rem;"><i class="fa-solid fa-trash-can"></i> Delete All</button>
+          </div>
+          <div class="tracks-list-container" id="uploaded-tracks-list">
+            <!-- Dynamically populated list of uploaded songs -->
+          </div>
+        </section>
+
+        <!-- 7. Visualizer / Full Screen Player View -->
+        <section id="view-visualizer" class="content-view">
+          <h2 class="section-title" style="margin-bottom: 24px;">Live Audio Spectrum Visualizer</h2>
+          
+          <div class="visualizer-container">
+            <div style="display: flex; align-items: center; gap: 40px; width: 100%; flex-wrap: wrap; justify-content: center;">
+              <!-- Spinning CD visual -->
+              <div style="position: relative; width: 220px; height: 220px; display: flex; align-items: center; justify-content: center;">
+                <div id="vis-disc-outer" class="hero-visual-art" style="width: 200px; height: 200px; border-radius: 50%; background-color: #0c0d16; border: 4px solid var(--border-glass); box-shadow: 0 15px 35px rgba(0,0,0,0.6); overflow: hidden; display: flex; align-items: center; justify-content: center; position: relative;">
+                  <img id="vis-cover" src="assets/album-default.svg" alt="Artwork" style="width: 100%; height: 100%; object-fit: cover;">
+                  <div style="position: absolute; width: 40px; height: 40px; border-radius: 50%; background-color: var(--bg-base); border: 2px solid rgba(255,255,255,0.1); box-shadow: inset 0 0 10px rgba(0,0,0,0.8);"></div>
+                </div>
+              </div>
+
+              <!-- Track info metadata -->
+              <div style="flex-grow: 1; min-width: 250px; text-align: left;">
+                <h3 id="vis-title" style="font-size: 2.2rem; line-height: 1.2; margin-bottom: 8px;">No Song Playing</h3>
+                <p id="vis-artist" style="font-size: 1.2rem; color: var(--primary-hover); margin-bottom: 24px;">Select a song to start streaming</p>
+                
+                <!-- Audio info tags -->
+                <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+                  <span style="background-color: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); font-size: 0.75rem; padding: 4px 10px; border-radius: 4px; color: var(--text-secondary);" id="vis-source-tag">SOURCE: NONE</span>
+                  <span style="background-color: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); font-size: 0.75rem; padding: 4px 10px; border-radius: 4px; color: var(--text-secondary);" id="vis-duration-tag">00:00</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Equalizer Canvas -->
+            <canvas id="visualizer-canvas" class="visualizer-canvas"></canvas>
+            
+            <div style="display: flex; gap: 16px; margin-top: 20px; align-items: center; width: 100%; justify-content: space-between;">
+              <span style="font-size: 0.8rem; color: var(--text-muted);">Visualizer mode: Frequency Spectrum (Web Audio API)</span>
+              <!-- Toggle theme or effect -->
+              <button class="hero-btn" id="toggle-vis-style" style="padding: 6px 12px; font-size: 0.8rem; background-color: rgba(255,255,255,0.02); border: 1px solid var(--border-glass); box-shadow: none;">
+                <i class="fa-solid fa-palette"></i> Toggle Palette
+              </button>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    <!-- Floating Bottom Player Bar -->
+    <footer class="player-bar">
+      <!-- Player Left: Song Details -->
+      <div class="player-track-info">
+        <img class="player-cover" id="player-track-cover" src="assets/album-default.svg" alt="Cover Art">
+        <div class="player-meta">
+          <span class="player-title" id="player-track-title">Select a track</span>
+          <span class="player-artist" id="player-track-artist">AuraStream Player</span>
+        </div>
+        <button class="player-fav-btn" id="player-track-fav-btn">
+          <i class="fa-regular fa-heart"></i>
+        </button>
+      </div>
+
+      <!-- Player Center: Controls & Seek Bar -->
+      <div class="player-controls">
+        <div class="control-buttons">
+          <button class="control-btn" id="player-shuffle-btn" title="Shuffle"><i class="fa-solid fa-shuffle"></i></button>
+          <button class="control-btn" id="player-prev-btn" title="Previous"><i class="fa-solid fa-backward-step"></i></button>
+          <button class="control-btn play-pause" id="player-play-btn" title="Play"><i class="fa-solid fa-play"></i></button>
+          <button class="control-btn" id="player-next-btn" title="Next"><i class="fa-solid fa-forward-step"></i></button>
+          <button class="control-btn" id="player-repeat-btn" title="Repeat"><i class="fa-solid fa-repeat"></i></button>
+        </div>
+        <div class="playback-timeline">
+          <span class="time-label current" id="player-time-current">0:00</span>
+          <div class="progress-container" id="player-timeline-container">
+            <div class="progress-bar" id="player-timeline-bar">
+              <div class="progress-handle"></div>
+            </div>
+          </div>
+          <span class="time-label end" id="player-time-duration">0:00</span>
+        </div>
+      </div>
+
+      <!-- Player Right: Volume and Visualizer shortcut -->
+      <div class="player-utilities">
+        <button class="control-btn" id="player-toggle-vis-btn" title="Live Spectrum Visualizer"><i class="fa-solid fa-chart-simple"></i></button>
+        <button class="control-btn" id="player-queue-btn" title="Play Queue"><i class="fa-solid fa-list-ul"></i></button>
+        <div class="volume-control">
+          <button class="volume-btn" id="player-volume-btn"><i class="fa-solid fa-volume-high"></i></button>
+          <div class="volume-slider-container" id="player-volume-slider">
+            <div class="volume-slider-bar" id="player-volume-bar"></div>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- ===================== MODALS SYSTEM ===================== -->
+
+  <!-- 1. Create Playlist Modal -->
+  <div class="modal-overlay" id="modal-create-playlist">
+    <div class="modal-content">
+      <button class="modal-close" id="modal-create-playlist-close"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-title">Create New Playlist</h3>
+      <form id="create-playlist-form" onsubmit="return false;">
+        <div class="form-group">
+          <label class="form-label" for="playlist-name">Playlist Name *</label>
+          <input type="text" id="playlist-name" class="form-input" placeholder="e.g. Night Vibes" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="playlist-desc">Description</label>
+          <input type="text" id="playlist-desc" class="form-input" placeholder="Brief description of your playlist">
+        </div>
+        <div class="modal-btn-row">
+          <button type="button" class="modal-btn cancel" id="modal-create-playlist-cancel">Cancel</button>
+          <button type="submit" class="modal-btn confirm">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 2. Add to Playlist Modal Selection -->
+  <div class="modal-overlay" id="modal-add-to-playlist">
+    <div class="modal-content">
+      <button class="modal-close" id="modal-add-playlist-close"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-title">Add Track to Playlist</h3>
+      <div id="add-playlist-options-container" style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; margin-bottom: 16px;">
+        <!-- Playlists dynamically rendered here -->
+      </div>
+      <div class="modal-btn-row" style="margin-top: 10px;">
+        <button type="button" class="modal-btn cancel" id="modal-add-playlist-cancel" style="width: 100%;">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. About / Info Modal -->
+  <div class="modal-overlay" id="modal-about">
+    <div class="modal-content" style="max-width: 520px;">
+      <button class="modal-close" id="modal-about-close"><i class="fa-solid fa-xmark"></i></button>
+      <div style="text-align: center; margin-bottom: 24px;">
+        <div style="font-size: 3rem; margin-bottom: 12px;">
+          <i class="fa-solid fa-wand-magic-sparkles" style="color: var(--primary); text-shadow: 0 0 20px var(--primary-glow);"></i>
+        </div>
+        <h3 class="modal-title" style="font-size: 1.8rem; margin-bottom: 6px;">AuraStream</h3>
+        <span style="font-size: 0.8rem; color: var(--text-muted);">v1.0.0 — Open Source</span>
+      </div>
+
+      <p style="color: var(--text-secondary); font-size: 0.95rem; line-height: 1.7; margin-bottom: 20px;">
+        A <strong style="color: var(--text-primary);">free & open-source</strong> music streaming web app — no account, no tracking, no limits. Everything runs in your browser.
+      </p>
+
+      <div class="about-features-grid">
+        <div class="about-feature">
+          <i class="fa-solid fa-network-wired" style="color: #a855f7;"></i>
+          <span>Audius Streaming</span>
+        </div>
+        <div class="about-feature">
+          <i class="fa-brands fa-apple" style="color: #818cf8;"></i>
+          <span>iTunes Catalog</span>
+        </div>
+        <div class="about-feature">
+          <i class="fa-brands fa-youtube" style="color: #ef4444;"></i>
+          <span>YouTube Music</span>
+        </div>
+        <div class="about-feature">
+          <i class="fa-solid fa-database" style="color: #10b981;"></i>
+          <span>Local Uploads</span>
+        </div>
+        <div class="about-feature">
+          <i class="fa-solid fa-chart-simple" style="color: var(--primary);"></i>
+          <span>Live Visualizer</span>
+        </div>
+        <div class="about-feature">
+          <i class="fa-solid fa-wifi" style="color: #f59e0b;"></i>
+          <span>Works Offline</span>
+        </div>
+      </div>
+
+      <div class="about-shortcuts">
+        <h4 style="font-size: 0.85rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px;">Keyboard Shortcuts</h4>
+        <div class="shortcut-row"><kbd>Space</kbd><span>Play / Pause</span></div>
+        <div class="shortcut-row"><kbd>←</kbd><span>Previous Track</span></div>
+        <div class="shortcut-row"><kbd>→</kbd><span>Next Track</span></div>
+        <div class="shortcut-row"><kbd>M</kbd><span>Mute / Unmute</span></div>
+        <div class="shortcut-row"><kbd>F</kbd><span>Favorite Track</span></div>
+        <div class="shortcut-row"><kbd>V</kbd><span>Open Visualizer</span></div>
+        <div class="shortcut-row"><kbd>?</kbd><span>Show this dialog</span></div>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-top: 20px;">
+        <a href="https://github.com/fahmifarid/aurastream" target="_blank" rel="noopener" class="modal-btn confirm" style="flex: 1; text-decoration: none; text-align: center; justify-content: center; display: flex; align-items: center; gap: 8px;">
+          <i class="fa-brands fa-github"></i> View on GitHub
+        </a>
+        <button class="modal-btn cancel" id="modal-about-ok" style="flex: 1;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Keyboard Shortcut Hint Overlay (? key) -->
+  <div class="modal-overlay" id="modal-shortcuts">
+    <div class="modal-content" style="max-width: 420px;">
+      <button class="modal-close" id="modal-shortcuts-close"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-title"><i class="fa-solid fa-keyboard" style="color: var(--primary); margin-right: 10px;"></i>Keyboard Shortcuts</h3>
+      <div class="about-shortcuts" style="margin-top: 16px;">
+        <div class="shortcut-row"><kbd>Space</kbd><span>Play / Pause</span></div>
+        <div class="shortcut-row"><kbd>←</kbd><span>Previous Track</span></div>
+        <div class="shortcut-row"><kbd>→</kbd><span>Next Track</span></div>
+        <div class="shortcut-row"><kbd>M</kbd><span>Mute / Unmute</span></div>
+        <div class="shortcut-row"><kbd>F</kbd><span>Favorite current track</span></div>
+        <div class="shortcut-row"><kbd>V</kbd><span>Open Visualizer</span></div>
+        <div class="shortcut-row"><kbd>S</kbd><span>Toggle Shuffle</span></div>
+        <div class="shortcut-row"><kbd>R</kbd><span>Cycle Repeat mode</span></div>
+        <div class="shortcut-row"><kbd>?</kbd><span>Show this dialog</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Mini Video Player (for YouTube Music streaming) -->
+  <div id="floating-video-player" class="floating-video-player">
+    <div class="video-player-header" id="video-player-drag-handle">
+      <span class="video-player-title"><i class="fa-brands fa-youtube" style="color: #ff0000; margin-right: 6px;"></i> Mini Player</span>
+      <div class="video-player-controls">
+        <button class="video-control-btn" id="video-minimize-btn" title="Minimize"><i class="fa-solid fa-minus"></i></button>
+        <button class="video-control-btn" id="video-close-btn" style="color: #ef4444;" title="Close Player"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+    </div>
+    <div class="video-player-body" id="video-player-body">
+      <!-- YouTube IFrame API target container -->
+      <div id="youtube-player-container"></div>
+    </div>
+  </div>
+
+  <!-- Hidden SoundCloud Widget for audio playback -->
+  <iframe id="soundcloud-widget-iframe" style="display: none;" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/tracks/293&amp;show_artwork=false"></iframe>
+
+  <!-- TOAST NOTIFICATIONS -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- PWA install prompt banner -->
+  <div id="pwa-install-banner" class="pwa-banner" style="display: none;">
+    <div class="pwa-banner-content">
+      <i class="fa-solid fa-wand-magic-sparkles" style="color: var(--primary);"></i>
+      <span>Install AuraStream for the best experience!</span>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button class="modal-btn confirm" id="pwa-install-btn" style="padding: 6px 14px; font-size: 0.8rem;">Install</button>
+      <button class="modal-btn cancel" id="pwa-dismiss-btn" style="padding: 6px 14px; font-size: 0.8rem;">Dismiss</button>
+    </div>
+  </div>
+
+  <!-- Assets folder placeholders fallback generator script -->
+  <script>
+    // Auto-fallback image settings
+    window.addEventListener('load', () => {
+      const imgElements = document.querySelectorAll('img');
+      imgElements.forEach(img => {
+        img.onerror = function() {
+          const text = this.alt || 'AS';
+          this.src = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="200" height="200" fill="%231a1e30"/><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%238b5cf6"/><stop offset="100%" stop-color="%236366f1"/></linearGradient></defs><rect width="200" height="200" fill="url(%23g)" opacity="0.65"/><text x="50%" y="55%" font-family="Outfit, sans-serif" font-size="28" font-weight="bold" fill="white" text-anchor="middle">${encodeURIComponent(text.substr(0,12))}</text></svg>`;
+        };
+      });
+    });
+
+    // Splash screen controller
+    window.addEventListener('DOMContentLoaded', () => {
+      const splash = document.getElementById('splash-screen');
+      const app = document.getElementById('app-root');
+      setTimeout(() => {
+        splash.classList.add('fade-out');
+        app.style.transition = 'opacity 0.5s ease';
+        app.style.opacity = '1';
+        setTimeout(() => splash.remove(), 600);
+      }, 1800);
+    });
+
+    // PWA Service Worker registration
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js')
+          .then(reg => console.log('[PWA] Service Worker registered:', reg.scope))
+          .catch(err => console.warn('[PWA] SW registration failed:', err));
+      });
+    }
+
+    // PWA Install Prompt
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      const banner = document.getElementById('pwa-install-banner');
+      if (banner) banner.style.display = 'flex';
+    });
+
+    document.getElementById('pwa-install-btn')?.addEventListener('click', async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log('[PWA] Install outcome:', outcome);
+        deferredPrompt = null;
+      }
+      document.getElementById('pwa-install-banner').style.display = 'none';
+    });
+
+    document.getElementById('pwa-dismiss-btn')?.addEventListener('click', () => {
+      document.getElementById('pwa-install-banner').style.display = 'none';
+    });
+  </script>
+
+  <!-- Script SDKs for SoundCloud only (YouTube now uses direct iframe embed) -->
+  <script src="https://w.soundcloud.com/player/api.js"></script>
+
+  <!-- Application Logic Modules -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>

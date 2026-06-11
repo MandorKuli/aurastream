@@ -1,0 +1,38 @@
+# Gitignore for AuraStream
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V3
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+
+# Node (if used for local dev server)
+node_modules/
+package-lock.json
+
+# Build output (if ever added)
+dist/
+build/
+
+# Environment variables (never commit secrets)
+.env
+.env.local
+.env.production
+
+# Temporary files
+*.tmp
+*.temp
