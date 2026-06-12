@@ -36,3 +36,9 @@ build/
 # Temporary files
 *.tmp
 *.temp
+
+# Python / Backend
+backend/venv/
+backend/__pycache__/
+backend/.pytest_cache/
+*.pyc

@@ -15,10 +15,11 @@
 | 🎧 **Audius Streaming** | Stream from the decentralized Audius music network |
 | 🍎 **iTunes Catalog** | Search & play 90M+ tracks via iTunes Search API |
 | ▶️ **YouTube Music** | Stream via floating YouTube mini player |
-| ☁️ **SoundCloud** | Play SoundCloud tracks via embedded widget |
-| 📁 **Local Uploads** | Upload MP3/WAV — stored locally via IndexedDB |
-| 📊 **Live Visualizer** | Real-time audio spectrum visualizer (Web Audio API) |
-| ❤️ **Favorites & Playlists** | Save favorites and organize playlists locally |
+| ☁️ **Serverless Cloud Sync** | 100% Serverless Cloud Auth & Sync powered by Firebase |
+| 🌍 **Global Party Room** | Listen together with friends in real-time via Firebase Realtime Database |
+| 📁 **Local Uploads (OPFS)** | Upload MP3/WAV — permanently stored locally via Origin Private File System |
+| 📊 **Live Visualizer** | Real-time 60fps audio spectrum visualizer (Web Audio API) |
+| ❤️ **Favorites & Playlists** | Save favorites and organize playlists locally & sync to cloud |
 | 📱 **PWA Ready** | Install as a native-like app on any device |
 | ⌨️ **Keyboard Shortcuts** | Full keyboard control (Space, arrows, M, F, V…) |
 | 🌐 **Works Offline** | Static assets cached via Service Worker |
@@ -53,16 +54,15 @@ Then open `http://localhost:8080` in your browser.
 
 ```
 aurastream/
-├── index.html          # Main HTML shell (all views & modals)
-├── style.css           # Complete design system (CSS variables, glassmorphism)
-├── app.js              # Main application controller
-├── db.js               # IndexedDB wrapper (local music storage)
-├── api.js              # API clients (Audius, iTunes, YouTube resolvers)
-├── manifest.json       # PWA web app manifest
-├── service-worker.js   # Offline caching service worker
-└── assets/
-    ├── album-default.svg    # Default album artwork
-    └── playlist-default.svg # Default playlist artwork
+├── index.html            # Main HTML shell (Firebase SDKs, UI, Modals)
+├── style.css             # Complete design system (Glassmorphism, CSS vars)
+├── app.js                # Main application controller (Routing, Firebase RTDB)
+├── db.js                 # Database wrapper (OPFS, IndexedDB, Firebase Auth)
+├── api.js                # API clients (Audius, iTunes, YouTube proxy)
+├── firebase-config.js    # Firebase environment configuration
+├── manifest.json         # PWA web app manifest
+├── sw.js                 # Offline caching service worker
+└── assets/               # SVGs, icons, and static imagery
 ```
 
 ---
@@ -96,20 +96,20 @@ aurastream/
     │    app.js   │  ← Main controller
     │  (state +   │     Player engines
     │   routing)  │     Event handlers
-    └──┬───────┬──┘
+    └──┬───────┬──┘     Party Room (RTDB)
        │       │
-  ┌────▼──┐ ┌──▼────┐
-  │ db.js │ │ api.js│
-  │IndexDB│ │Audius │
-  │ store │ │iTunes │
-  └───────┘ │YouTube│
+  ┌────▼──┐ ┌──▼────┐ ┌─────────────┐
+  │ db.js │ │ api.js│ │  Firebase   │
+  │ OPFS  │ │Audius │ │  (Auth,     │
+  │IndexDB│ │iTunes │ │  Firestore) │
+  └───────┘ │YouTube│ └─────────────┘
             └───────┘
 ```
 
 **Player Engines:**
-- **HTML5 Audio** — local uploads, Audius streams, Invidious audio proxy
-- **YouTube iframe** — floating mini player for YouTube videos
-- **SoundCloud Widget** — embedded SoundCloud widget API
+- **HTML5 Audio** — Local uploads (OPFS), Audius streams, Piped API proxy
+- **YouTube iframe** — Floating mini player for robust YouTube video streaming
+- **Web Audio API** — EQ, Bass Boost, Reverb, and Spectrum Analysis
 
 ---
 

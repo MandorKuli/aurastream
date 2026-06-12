@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AuraStream — Premium Music Streaming</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AuraStream - Next Gen Music</title>
+
+  <!-- PWA Manifest -->
+  <link rel="icon" href="assets/icon-192.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="assets/icon-192.svg">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AuraStream">
 
   <!-- Primary Meta Tags -->
   <meta name="title" content="AuraStream — Premium Music Streaming">
@@ -26,18 +34,13 @@
   <meta name="twitter:description" content="Stream millions of tracks from Audius, iTunes & YouTube, or play your own uploads — all in your browser, no account needed.">
   <meta name="twitter:image" content="https://fahmifarid.github.io/aurastream/assets/og-banner.png">
 
-  <!-- PWA Manifest -->
-  <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="assets/icon-192.png">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="AuraStream">
-
   <!-- Google Fonts & FontAwesome CDN -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- ===================== IMMERSIVE BG ===================== -->
+  <div id="immersive-bg" class="immersive-bg"></div>
 
   <!-- ===================== SPLASH SCREEN ===================== -->
   <div id="splash-screen" class="splash-screen">
@@ -96,7 +99,16 @@
             <a class="menu-link"><i class="fa-solid fa-music"></i> Playlists</a>
           </li>
           <li class="menu-item" data-view="upload">
-            <a class="menu-link"><i class="fa-solid fa-cloud-arrow-up"></i> Upload Music</a>
+            <a class="menu-link"><i class="fa-solid fa-cloud-arrow-up"></i> Local Uploads</a>
+          </li>
+          <li class="menu-item" data-view="stats">
+            <a class="menu-link"><i class="fa-solid fa-chart-pie"></i> Your Stats</a>
+          </li>
+          <li class="menu-item" id="sidebar-login-btn">
+            <a class="menu-link"><i class="fa-solid fa-user-circle"></i> Login / Sync</a>
+          </li>
+          <li class="menu-item" id="sidebar-settings-btn">
+            <a class="menu-link"><i class="fa-solid fa-gear"></i> Settings</a>
           </li>
         </ul>
       </nav>
@@ -130,9 +142,15 @@
           <div class="search-box">
             <i class="fa-solid fa-magnifying-glass"></i>
             <input type="text" id="global-search-input" placeholder="Search songs, artists, or uploaded tracks...">
+            <button id="voice-search-btn" class="hero-btn" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 6px 12px; font-size: 0.9rem; background-color: rgba(255,255,255,0.05); border: 1px solid var(--border-glass); box-shadow: none;" title="Voice Search">
+              <i class="fa-solid fa-microphone"></i>
+            </button>
           </div>
           
           <div style="display: flex; gap: 12px;">
+            <button class="hero-btn" id="party-room-btn" style="padding: 8px 16px; font-size: 0.85rem; background-color: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); box-shadow: none; color: #facc15;">
+              <i class="fa-solid fa-tower-broadcast"></i> Party Room
+            </button>
             <button class="hero-btn" id="header-visualizer-btn" style="padding: 8px 16px; font-size: 0.85rem; background-color: rgba(255,255,255,0.03); border: 1px solid var(--border-glass); box-shadow: none;">
               <i class="fa-solid fa-chart-simple"></i> Visualizer
             </button>
@@ -356,6 +374,18 @@
           </div>
         </section>
 
+        <!-- 6. Stats View (Aura Wrapped) -->
+        <section id="view-stats" class="content-view">
+          <div class="section-header" style="margin-bottom: 30px;">
+            <h2 class="section-title"><i class="fa-solid fa-chart-pie" style="color: var(--primary); margin-right: 12px;"></i>Aura Wrapped</h2>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 8px;">Your most played tracks across all sources.</p>
+          </div>
+          
+          <div id="stats-content-container" style="display: flex; flex-direction: column; gap: 16px;">
+            <!-- Stats rendered via JS -->
+          </div>
+        </section>
+
       </div>
     </main>
 
@@ -395,6 +425,8 @@
 
       <!-- Player Right: Volume and Visualizer shortcut -->
       <div class="player-utilities">
+        <button class="control-btn" id="player-lyrics-btn" title="Lyrics"><i class="fa-solid fa-microphone"></i></button>
+        <button class="control-btn" id="player-eq-btn" title="Audio Equalizer"><i class="fa-solid fa-sliders"></i></button>
         <button class="control-btn" id="player-toggle-vis-btn" title="Live Spectrum Visualizer"><i class="fa-solid fa-chart-simple"></i></button>
         <button class="control-btn" id="player-queue-btn" title="Play Queue"><i class="fa-solid fa-list-ul"></i></button>
         <div class="volume-control">
@@ -528,6 +560,136 @@
     </div>
   </div>
 
+  <!-- Login Modal -->
+  <div class="modal-overlay" id="modal-login">
+    <div class="modal-content" style="max-width: 400px; text-align: center;">
+      <button class="modal-close" id="modal-login-close"><i class="fa-solid fa-xmark"></i></button>
+      <h2 style="margin-bottom: 24px; font-size: 1.8rem;">Cloud Login</h2>
+      
+      <div style="margin-bottom: 16px;">
+        <input type="email" id="login-email" placeholder="Email Address" style="width: 100%; padding: 12px 16px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; margin-bottom: 12px; font-size: 0.95rem;">
+        <input type="password" id="login-password" placeholder="Password (Min. 6 chars)" style="width: 100%; padding: 12px 16px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; font-size: 0.95rem;">
+      </div>
+      
+      <div style="display: flex; gap: 12px; margin-top: 24px;">
+        <button class="modal-btn" id="login-submit-btn" style="flex: 1; background-color: var(--primary);">Login</button>
+        <button class="modal-btn" id="register-submit-btn" style="flex: 1; background-color: rgba(255,255,255,0.05); border: 1px solid var(--border-glass);">Register</button>
+      </div>
+      <p style="margin-top: 16px; font-size: 0.8rem; color: var(--text-secondary);">Your data will be synced to Firebase</p>
+    </div>
+  </div>
+
+  <!-- Profile / Logout Modal -->
+  <div class="modal-overlay" id="modal-profile">
+    <div class="modal-content" style="max-width: 400px; text-align: center;">
+      <button class="modal-close" id="modal-profile-close"><i class="fa-solid fa-xmark"></i></button>
+      <div style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), #8b5cf6); display: flex; align-items: center; justify-content: center; font-size: 2rem; font-weight: bold; margin: 0 auto 16px; color: white;">
+        <i class="fa-solid fa-user"></i>
+      </div>
+      <h2 id="profile-name-text" style="margin-bottom: 4px; font-size: 1.5rem;">User Name</h2>
+      <p id="profile-email-text" style="color: var(--text-muted); margin-bottom: 24px; font-size: 0.9rem;">user@example.com</p>
+      
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <button class="modal-btn" id="profile-sync-btn" style="background-color: var(--primary);"><i class="fa-solid fa-cloud-arrow-up"></i> Sync Data to Cloud</button>
+        <button class="modal-btn" id="profile-edit-btn" style="background-color: rgba(255,255,255,0.05); border: 1px solid var(--border-glass);"><i class="fa-solid fa-pen-to-square"></i> Edit Display Name</button>
+        <button class="modal-btn cancel" id="profile-logout-btn" style="background-color: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3);"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Lyrics Modal -->
+  <div class="modal-overlay" id="modal-lyrics">
+    <div class="modal-content" style="max-width: 500px; height: 75vh; display: flex; flex-direction: column;">
+      <button class="modal-close" id="modal-lyrics-close"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-title" style="text-align: center;" id="modal-lyrics-title">Lyrics</h3>
+      <div id="lyrics-content" style="flex: 1; overflow-y: auto; text-align: center; white-space: pre-wrap; font-size: 1.05rem; line-height: 2; color: var(--text-primary); padding: 20px; font-weight: 500;">
+        <i class="fa-solid fa-music" style="font-size: 3rem; color: var(--border-glass); margin-top: 40px;"></i>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. EQ Modal -->
+  <div class="modal-overlay" id="modal-eq">
+    <div class="modal-content" style="max-width: 400px; text-align: center;">
+      <button class="modal-close" id="modal-eq-close"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-title"><i class="fa-solid fa-sliders" style="color: var(--primary); margin-right: 10px;"></i>Equalizer</h3>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 24px;">Works with local tracks, Audius, and iTunes via Web Audio API.</p>
+      
+      <div style="margin-bottom: 30px;">
+        <label for="eq-bass" style="display: flex; justify-content: space-between; color: var(--text-primary); margin-bottom: 12px; font-weight: 500;">
+          <span>Bass</span> <span id="eq-bass-val" style="color: var(--primary);">0 dB</span>
+        </label>
+        <input type="range" id="eq-bass" min="-20" max="20" value="0" step="1" style="width: 100%; accent-color: var(--primary); cursor: pointer;">
+      </div>
+
+      <div style="margin-bottom: 30px;">
+        <label for="eq-treble" style="display: flex; justify-content: space-between; color: var(--text-primary); margin-bottom: 12px; font-weight: 500;">
+          <span>Treble</span> <span id="eq-treble-val" style="color: var(--primary);">0 dB</span>
+        </label>
+        <input type="range" id="eq-treble" min="-20" max="20" value="0" step="1" style="width: 100%; accent-color: var(--primary); cursor: pointer;">
+      </div>
+      
+      <div style="margin-bottom: 24px; text-align: left; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 12px; border: 1px solid var(--border-glass);">
+        <label style="display: block; color: var(--text-secondary); margin-bottom: 10px; font-weight: 500; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.05em;"><i class="fa-solid fa-bolt" style="color: #fbbf24; margin-right: 6px;"></i>Remix Mode (Speed & Pitch)</label>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <label class="radio-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text-primary);">
+            <input type="radio" name="remix_mode" value="normal" checked style="accent-color: var(--primary);"> Normal
+          </label>
+          <label class="radio-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text-primary);">
+            <input type="radio" name="remix_mode" value="nightcore" style="accent-color: var(--primary);"> Nightcore (Sped Up)
+          </label>
+          <label class="radio-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text-primary);">
+            <input type="radio" name="remix_mode" value="slowed" style="accent-color: var(--primary);"> Slowed + Reverb
+          </label>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 24px; text-align: left; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 12px; border: 1px solid var(--border-glass);">
+        <label style="display: block; color: var(--text-secondary); margin-bottom: 10px; font-weight: 500; text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.05em;"><i class="fa-solid fa-headphones" style="color: #6366f1; margin-right: 6px;"></i>Spatial Audio</label>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 0.85rem; color: var(--text-muted);">Enable 8D Surround Effect</span>
+          <label class="switch" style="position: relative; display: inline-block; width: 44px; height: 24px;">
+            <input type="checkbox" id="eq-spatial-toggle" style="opacity: 0; width: 0; height: 0;">
+            <span class="slider round" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px;"></span>
+          </label>
+        </div>
+      </div>
+      
+      <button class="modal-btn cancel" id="eq-reset-btn" style="width: 100%;">Reset EQ & Remix</button>
+    </div>
+  </div>
+
+  <!-- 7. Settings / Data Modal -->
+  <div class="modal-overlay" id="modal-settings">
+    <div class="modal-content" style="max-width: 450px;">
+      <button class="modal-close" id="modal-settings-close"><i class="fa-solid fa-xmark"></i></button>
+      <h3 class="modal-title"><i class="fa-solid fa-gear" style="color: var(--primary); margin-right: 10px;"></i>Settings</h3>
+      
+      <div style="margin-top: 24px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 12px; border: 1px solid var(--border-glass);">
+        <h4 style="color: var(--text-secondary); margin-bottom: 8px; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em;">Backup & Restore</h4>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 16px; line-height: 1.5;">Export your playlists, library, and favorites as a JSON file. Use this file to restore your data later if you clear your browser history.</p>
+        
+        <div style="display: flex; gap: 12px;">
+          <button class="modal-btn confirm" id="settings-export-btn" style="flex: 1;"><i class="fa-solid fa-file-export"></i> Export</button>
+          <button class="modal-btn cancel" id="settings-import-btn" style="flex: 1;"><i class="fa-solid fa-file-import"></i> Import</button>
+          <input type="file" id="settings-import-file" accept=".json" style="display: none;">
+        </div>
+      </div>
+      
+      <div style="margin-top: 24px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 12px; border: 1px solid var(--border-glass);">
+        <h4 style="color: var(--text-secondary); margin-bottom: 8px; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em;">Playback Mode</h4>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="color: var(--text-primary); font-size: 0.9rem;">Force Full Songs</span>
+          <label class="switch" style="position: relative; display: inline-block; width: 44px; height: 24px;">
+            <input type="checkbox" id="settings-fullsong-toggle" style="opacity: 0; width: 0; height: 0;" checked>
+            <span class="slider round" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px;"></span>
+          </label>
+        </div>
+        <p style="color: var(--text-muted); font-size: 0.8rem; line-height: 1.4;">If enabled, AuraStream will attempt to find full versions of songs on YouTube. Disable to play instant 30-sec previews (saves data and loads instantly).</p>
+      </div>
+    </div>
+  </div>
+
   <!-- Floating Mini Video Player (for YouTube Music streaming) -->
   <div id="floating-video-player" class="floating-video-player">
     <div class="video-player-header" id="video-player-drag-handle">
@@ -590,7 +752,7 @@
     // PWA Service Worker registration
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./service-worker.js')
+        navigator.serviceWorker.register('./sw.js')
           .then(reg => console.log('[PWA] Service Worker registered:', reg.scope))
           .catch(err => console.warn('[PWA] SW registration failed:', err));
       });
@@ -620,7 +782,14 @@
     });
   </script>
 
-  <!-- Script SDKs for SoundCloud only (YouTube now uses direct iframe embed) -->
+  <!-- Firebase SDK (v8 for easy drop-in without bundlers) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <script src="firebase-config.js"></script>
+
+  <!-- Script SDKs -->
   <script src="https://w.soundcloud.com/player/api.js"></script>
 
   <!-- Application Logic Modules -->

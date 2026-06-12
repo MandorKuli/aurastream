@@ -30,13 +30,29 @@ const state = {
   scWidget: null,
   scWidgetReady: false,
 
-  // Web Audio Visualizer variables
+  // Web Audio Visualizer & EQ variables
   audioContext: null,
   analyser: null,
   sourceNode: null,
+  eqBassNode: null,
+  eqTrebleNode: null,
+  reverbNode: null,
+  pannerNode: null,
+  spatialEnabled: false,
+  forceFullSongs: true, // Default to finding full songs on YouTube
+  spatialAngle: 0,
   visualizerActive: false,
   visualizerStyle: 0, // Palettes: 0: Purple/Indigo, 1: Cyan/Emerald, 2: Magenta/Pink
-  animationFrameId: null
+  animationFrameId: null,
+  
+  // Remix Mode
+  remixMode: 'normal', // 'normal' | 'nightcore' | 'slowed'
+  
+  // Karaoke Mode
+  currentLyrics: [], // Array of { time, text }
+  
+  // Transitions
+  fadeInterval: null
 };
 
 // --- DOM Cache ---
@@ -48,6 +64,7 @@ const DOM = {
   
   // Search
   globalSearch: document.getElementById('global-search-input'),
+  voiceSearchBtn: document.getElementById('voice-search-btn'),
   searchTitleText: document.getElementById('search-title-text'),
   searchResultsList: document.getElementById('search-results-list'),
   filterAll: document.getElementById('filter-search-all'),
@@ -137,6 +154,50 @@ const DOM = {
   modalAddToPlaylistCancel: document.getElementById('modal-add-playlist-cancel'),
   addPlaylistOptionsContainer: document.getElementById('add-playlist-options-container'),
   
+  // New Modals (Lyrics, EQ, Settings)
+  playerLyricsBtn: document.getElementById('player-lyrics-btn'),
+  modalLyrics: document.getElementById('modal-lyrics'),
+  modalLyricsClose: document.getElementById('modal-lyrics-close'),
+  lyricsContent: document.getElementById('lyrics-content'),
+  
+  playerEqBtn: document.getElementById('player-eq-btn'),
+  modalEq: document.getElementById('modal-eq'),
+  modalEqClose: document.getElementById('modal-eq-close'),
+  eqBass: document.getElementById('eq-bass'),
+  eqTreble: document.getElementById('eq-treble'),
+  eqBassVal: document.getElementById('eq-bass-val'),
+  eqTrebleVal: document.getElementById('eq-treble-val'),
+  eqSpatialToggle: document.getElementById('eq-spatial-toggle'),
+  eqResetBtn: document.getElementById('eq-reset-btn'),
+  remixRadios: document.getElementsByName('remix_mode'),
+
+  sidebarSettingsBtn: document.getElementById('sidebar-settings-btn'),
+  sidebarLoginBtn: document.getElementById('sidebar-login-btn'),
+  modalSettings: document.getElementById('modal-settings'),
+  modalSettingsClose: document.getElementById('modal-settings-close'),
+  modalLogin: document.getElementById('modal-login'),
+  modalLoginClose: document.getElementById('modal-login-close'),
+  loginEmailInput: document.getElementById('login-email'),
+  loginPasswordInput: document.getElementById('login-password'),
+  loginSubmitBtn: document.getElementById('login-submit-btn'),
+  registerSubmitBtn: document.getElementById('register-submit-btn'),
+  modalProfile: document.getElementById('modal-profile'),
+  modalProfileClose: document.getElementById('modal-profile-close'),
+  profileNameText: document.getElementById('profile-name-text'),
+  profileEmailText: document.getElementById('profile-email-text'),
+  profileSyncBtn: document.getElementById('profile-sync-btn'),
+  profileEditBtn: document.getElementById('profile-edit-btn'),
+  profileLogoutBtn: document.getElementById('profile-logout-btn'),
+  settingsExportBtn: document.getElementById('settings-export-btn'),
+  settingsImportBtn: document.getElementById('settings-import-btn'),
+  settingsImportFile: document.getElementById('settings-import-file'),
+  settingsFullsongToggle: document.getElementById('settings-fullsong-toggle'),
+
+  partyRoomBtn: document.getElementById('party-room-btn'),
+
+  // Stats View
+  statsContainer: document.getElementById('stats-content-container'),
+
   // Toast
   toastContainer: document.getElementById('toast-container')
 };
@@ -179,6 +240,61 @@ function formatTime(seconds) {
   return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 }
 
+// --- LRC Parser ---
+function parseLRC(lrcText) {
+  const lines = lrcText.split('\n');
+  const parsed = [];
+  const timeRegex = /\[(\d{2}):(\d{2}\.\d{2,3})\]/;
+  lines.forEach(line => {
+    const match = timeRegex.exec(line);
+    if (match) {
+      const minutes = parseInt(match[1]);
+      const seconds = parseFloat(match[2]);
+      const text = line.replace(timeRegex, '').trim();
+      parsed.push({
+        time: (minutes * 60) + seconds,
+        text: text || '♪'
+      });
+    }
+  });
+  return parsed;
+}
+
+// --- Smooth DJ Transition Helper ---
+function fadeAudioVolume(targetVolume, durationMs = 1000) {
+  return new Promise(resolve => {
+    if (state.activePlayerEngine !== 'html5' || !state.audio) return resolve();
+    
+    // Clear any existing fade intervals
+    if (state.fadeInterval) {
+      clearInterval(state.fadeInterval);
+      state.fadeInterval = null;
+    }
+
+    const steps = 20;
+    const stepTime = durationMs / steps;
+    const currentVol = state.audio.volume;
+    const diff = targetVolume - currentVol;
+    const stepVol = diff / steps;
+    
+    if (diff === 0) return resolve();
+
+    let currentStep = 0;
+    state.fadeInterval = setInterval(() => {
+      currentStep++;
+      let newVol = currentVol + (stepVol * currentStep);
+      newVol = Math.max(0, Math.min(1, newVol));
+      state.audio.volume = newVol;
+      
+      if (currentStep >= steps) {
+        clearInterval(state.fadeInterval);
+        state.fadeInterval = null;
+        resolve();
+      }
+    }, stepTime);
+  });
+}
+
 // --- View Router ---
 function navigateToView(viewId, params = {}) {
   state.activeView = viewId;
@@ -212,6 +328,16 @@ function navigateToView(viewId, params = {}) {
     loadPlaylistDetail(params.playlistId);
   } else if (viewId === 'visualizer') {
     initVisualizerCanvas();
+    if (state.currentTrack) {
+      DOM.visTitle.textContent = state.currentTrack.title || 'Unknown Title';
+      DOM.visArtist.textContent = state.currentTrack.artist || 'Unknown Artist';
+      DOM.visCover.src = state.currentTrack.coverUrl || '';
+      DOM.visCover.alt = state.currentTrack.title || 'Cover';
+      DOM.visSourceTag.textContent = `SOURCE: ${(state.currentTrack.source || 'NONE').toUpperCase()}`;
+      DOM.visDurationTag.textContent = formatTime(state.currentTrack.duration || 0);
+    }
+  } else if (viewId === 'stats') {
+    renderStatsView();
   }
 }
 
@@ -246,50 +372,35 @@ function initAudioEngine() {
 
   state.audio.addEventListener('error', async (e) => {
     if (state.activePlayerEngine === 'html5') {
-      console.warn('Audio playback error:', e);
+      console.warn('Audio playback error on HTML5:', e);
       
-      // Try secondary proxy stream if Invidious host fails
+      // Fallback to YouTube Iframe Player if the stream fails
       if (state.currentTrack && (state.currentTrack.source === 'youtube' || state.currentTrack.source === 'itunes')) {
-        showToast('Playback issue. Retrying with another stream host...', 'warning');
-        
-        // Reset cached host and pick a different one
-        invidiousHost = null;
-        const usedHosts = state._usedInvidiousHosts || new Set();
-        usedHosts.add(invidiousHost);
-        state._usedInvidiousHosts = usedHosts;
-        
-        // Pick another host not yet tried
-        const nextHost = fallbackInvidiousHosts.find(h => !usedHosts.has(h));
-        if (nextHost) {
-          invidiousHost = nextHost;
-        } else {
-          invidiousHost = fallbackInvidiousHosts[Math.floor(Math.random() * fallbackInvidiousHosts.length)];
-          state._usedInvidiousHosts = new Set(); // Reset tracking
-        }
+        showToast('Local stream unreachable. Falling back to YouTube Player...', 'warning');
         
         try {
           let videoId;
           if (state.currentTrack.source === 'youtube') {
             videoId = state.currentTrack.streamUrl;
           } else {
-            // For iTunes, try to get video ID again
+            // For iTunes, get video ID
             videoId = await resolveYouTubeVideoId(state.currentTrack.artist, state.currentTrack.title);
           }
             
           if (videoId) {
-            const streamUrl = `${invidiousHost}/latest_version?id=${videoId}&itag=140&local=true`;
-            state.audio.src = streamUrl;
-            state.audio.load();
-            state.audio.play().catch(err => console.error(err));
-            return; // Exit error handler since we retried
+            state.audio.src = ''; // Clear broken source
+            state.activePlayerEngine = 'youtube';
+            DOM.floatingVideoPlayer.classList.add('active');
+            playYouTubeVideo(videoId);
+            return; // Successfully diverted to youtube player
           }
         } catch (err) {
-          console.error('Secondary proxy resolution failed:', err);
+          console.error('Fallback resolution failed:', err);
         }
         
-        // If all Invidious hosts fail and it's iTunes, fall back to 30s preview
-        if (state.currentTrack.source === 'itunes' && state.currentTrack.streamUrl) {
-          showToast('Streaming failed. Playing 30-sec preview.', 'warning');
+        // If everything fails and it's iTunes, play 30s preview
+        if (state.currentTrack.source === 'itunes' && state.currentTrack.streamUrl && state.currentTrack.streamUrl.includes('apple.com')) {
+          showToast('Playing 30-sec preview instead.', 'warning');
           state.audio.src = state.currentTrack.streamUrl;
           state.audio.load();
           state.audio.play().catch(err => console.error(err));
@@ -392,43 +503,129 @@ function startTimelineTrackerLoop() {
   setInterval(() => {
     if (!state.isPlaying || !state.currentTrack) return;
 
+    let currentPlayTime = 0;
+
     if (state.activePlayerEngine === 'html5') {
       if (state.audio && !isNaN(state.audio.duration)) {
-        const current = state.audio.currentTime;
+        currentPlayTime = state.audio.currentTime;
         const duration = state.audio.duration;
-        const percent = (current / duration) * 100;
+        const percent = (currentPlayTime / duration) * 100;
         DOM.playerTimelineBar.style.width = `${percent}%`;
-        DOM.playerTimeCurrent.textContent = formatTime(current);
+        DOM.playerTimeCurrent.textContent = formatTime(currentPlayTime);
         DOM.playerTimeDuration.textContent = formatTime(duration);
       }
     } else if (state.activePlayerEngine === 'youtube' && state.ytPlayerReady) {
+      // When using raw iframe embed, we can't access getCurrentTime/getDuration
+      // The iframe sandbox blocks cross-origin JS API access.
+      // We show the track's known duration and skip live progress.
       try {
-        const current = state.ytPlayer.getCurrentTime();
-        const duration = state.ytPlayer.getDuration();
-        if (duration > 0) {
-          const percent = (current / duration) * 100;
-          DOM.playerTimelineBar.style.width = `${percent}%`;
-          DOM.playerTimeCurrent.textContent = formatTime(current);
-          DOM.playerTimeDuration.textContent = formatTime(duration);
+        if (typeof state.ytPlayer.getCurrentTime === 'function') {
+          currentPlayTime = state.ytPlayer.getCurrentTime();
+          const duration = state.ytPlayer.getDuration();
+          if (duration > 0) {
+            const percent = (currentPlayTime / duration) * 100;
+            DOM.playerTimelineBar.style.width = `${percent}%`;
+            DOM.playerTimeCurrent.textContent = formatTime(currentPlayTime);
+            DOM.playerTimeDuration.textContent = formatTime(duration);
+          }
+        } else if (state.currentTrack && state.currentTrack.duration) {
+          // Show known duration from search metadata
+          DOM.playerTimeDuration.textContent = formatTime(state.currentTrack.duration);
         }
       } catch (err) {
-        // ignore iframe access warning
+        // ignore iframe cross-origin access errors
       }
     } else if (state.activePlayerEngine === 'soundcloud' && state.scWidgetReady) {
       state.scWidget.getPosition((ms) => {
         state.scWidget.getDuration((durationMs) => {
-          const current = ms / 1000;
+          currentPlayTime = ms / 1000;
           const duration = durationMs / 1000;
           if (duration > 0) {
-            const percent = (current / duration) * 100;
+            const percent = (currentPlayTime / duration) * 100;
             DOM.playerTimelineBar.style.width = `${percent}%`;
-            DOM.playerTimeCurrent.textContent = formatTime(current);
+            DOM.playerTimeCurrent.textContent = formatTime(currentPlayTime);
             DOM.playerTimeDuration.textContent = formatTime(duration);
           }
+          syncLyricsUI(currentPlayTime);
         });
       });
     }
+
+    if (state.activePlayerEngine !== 'soundcloud') {
+      syncLyricsUI(currentPlayTime);
+    }
+
+    // 8D SPATIAL AUDIO ANIMATION
+    if (state.spatialEnabled && state.pannerNode && state.activePlayerEngine === 'html5') {
+      state.spatialAngle += 0.05; // speed of rotation
+      const x = Math.sin(state.spatialAngle) * 3;
+      const z = Math.cos(state.spatialAngle) * 3;
+      state.pannerNode.positionX.value = x;
+      state.pannerNode.positionZ.value = z;
+    }
+
+    // IMMERSIVE BEAT-SYNC BACKGROUND
+    if (state.analyser && state.activePlayerEngine === 'html5') {
+      const bufferLength = state.analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      state.analyser.getByteFrequencyData(dataArray);
+      
+      // Calculate bass energy (first 10 bins)
+      let bassSum = 0;
+      for (let i = 0; i < 10; i++) {
+        bassSum += dataArray[i];
+      }
+      const bassAvg = bassSum / 10;
+      const bassEnergy = bassAvg / 255;
+      
+      const beatScale = 1 + (bassEnergy * 0.05); // max 1.05
+      const beatGlow = bassEnergy * 0.4; // max 0.4
+      
+      document.documentElement.style.setProperty('--beat-scale', beatScale);
+      document.documentElement.style.setProperty('--beat-glow', beatGlow);
+    } else {
+      document.documentElement.style.setProperty('--beat-scale', 1);
+      document.documentElement.style.setProperty('--beat-glow', 0);
+    }
+
   }, 250);
+}
+
+function syncLyricsUI(currentTime) {
+  if (!state.currentLyrics || state.currentLyrics.length === 0) return;
+  if (!DOM.modalLyrics.classList.contains('active')) return;
+
+  // Find the active lyric line
+  let activeIndex = -1;
+  for (let i = 0; i < state.currentLyrics.length; i++) {
+    if (currentTime >= state.currentLyrics[i].time) {
+      activeIndex = i;
+    } else {
+      break;
+    }
+  }
+
+  if (activeIndex !== -1 && state.lastLyricIndex !== activeIndex) {
+    state.lastLyricIndex = activeIndex;
+    
+    // Highlight UI
+    const lines = DOM.lyricsContent.querySelectorAll('.lyric-line');
+    lines.forEach(l => l.classList.remove('active'));
+    
+    if (lines[activeIndex]) {
+      lines[activeIndex].classList.add('active');
+      
+      // Auto-scroll logic: scroll the container so the active line is near the middle
+      const container = DOM.lyricsContent;
+      const targetLine = lines[activeIndex];
+      const offset = targetLine.offsetTop - (container.clientHeight / 2) + (targetLine.clientHeight / 2);
+      
+      container.scrollTo({
+        top: Math.max(0, offset),
+        behavior: 'smooth'
+      });
+    }
+  }
 }
 
 // Resolves YouTube video ID using a multi-stage approach (Invidious search API, Piped API, and YouTube scraping as final fallback)
@@ -623,12 +820,15 @@ async function resolveInvidiousHost() {
 }
 
 async function getInvidiousAudioUrl(videoId) {
-  const host = await resolveInvidiousHost();
-  return `${host}/latest_version?id=${videoId}&itag=140&local=true`;
+  return `http://localhost:8000/api/stream/${videoId}`;
 }
 
 async function playTrack(track, contextQueue = null) {
   try {
+    if (state.audioContext && state.audioContext.state === 'suspended') {
+      state.audioContext.resume();
+    }
+    
     // 1. Manage Playback Queue
     if (contextQueue && Array.isArray(contextQueue)) {
       state.queue = [...contextQueue];
@@ -643,10 +843,12 @@ async function playTrack(track, contextQueue = null) {
       }
     }
 
-    // 2. iTunes Full Playback Bypass via Invidious Audio Stream
-    // We resolve a YouTube video ID, then stream audio directly via Invidious
-    // This does NOT require the YouTube IFrame API to be ready.
-    if (track.source === 'itunes') {
+    // Log the play for Aura Wrapped (Listening Stats)
+    db.logTrackPlay(track);
+
+    // 2. Full Song Playback via Backend Audio Proxy (iTunes & YouTube)
+    // Uses yt-dlp backend to extract and proxy audio — NO mini player needed!
+    if ((track.source === 'itunes' || track.source === 'youtube') && state.forceFullSongs) {
       state.activePlayerEngine = 'html5';
       DOM.floatingVideoPlayer.classList.remove('active');
       
@@ -656,63 +858,111 @@ async function playTrack(track, contextQueue = null) {
       if (state.scWidgetReady) state.scWidget.pause();
 
       state.currentTrack = track;
-      showToast(`Finding full track for "${track.title}"...`, 'info');
       
       try {
-        const videoId = await resolveYouTubeVideoId(track.artist, track.title);
+        // Get video ID
+        let videoId;
+        if (track.source === 'youtube') {
+          videoId = track.streamUrl;
+        } else {
+          showToast(`Finding full track for "${track.title}"...`, 'info');
+          videoId = await resolveYouTubeVideoId(track.artist, track.title);
+        }
         
         if (videoId) {
-          // Try Invidious audio stream first, fall back to YouTube iframe
-          const host = await resolveInvidiousHost();
-          const streamUrl = `${host}/latest_version?id=${videoId}&itag=140&local=true`;
-          
-          state.audio.src = streamUrl;
-          state.audio.load();
-          
-          // Set timeout: if audio doesn't play within 5s, switch to YouTube iframe
-          let streamTimeout = setTimeout(() => {
-            if (state.currentTrack && state.currentTrack.id === track.id && 
-                (state.audio.paused || state.audio.readyState < 2)) {
-              console.warn('Invidious stream timeout, switching to YouTube iframe');
-              state.audio.src = '';
+          // Check if backend is reachable
+          let backendAlive = false;
+          try {
+            const probe = await fetch('http://localhost:8000/api/health', {
+              signal: AbortSignal.timeout(1500)
+            });
+            backendAlive = probe.ok;
+          } catch (_) {
+            backendAlive = false;
+          }
+
+          if (backendAlive) {
+            // 🎵 Stream audio via backend proxy — pure HTML5 <audio>, no iframe!
+            const streamUrl = `http://localhost:8000/api/stream/${videoId}`;
+            state.audio.src = streamUrl;
+            state.audio.load();
+            
+            // Timeout: if audio doesn't start within 10s, show error
+            let streamTimeout = setTimeout(() => {
+              if (state.currentTrack && state.currentTrack.id === track.id && 
+                  (state.audio.paused || state.audio.readyState < 2)) {
+                console.warn('Backend stream timeout');
+                // Fall back to preview for iTunes, or show error for YouTube
+                if (track.source === 'itunes' && track.streamUrl) {
+                  showToast('Stream timeout. Playing 30-sec preview.', 'warning');
+                  state.audio.src = track.streamUrl;
+                  state.audio.load();
+                  state.audio.play().catch(e => console.warn(e));
+                } else {
+                  showToast('Stream timeout. Please check backend server.', 'error');
+                }
+              }
+            }, 10000);
+            
+            state.audio.play().then(() => {
+              clearTimeout(streamTimeout);
+              showToast('🎵 Streaming full song (no mini player!)', 'success');
+            }).catch(e => {
+              clearTimeout(streamTimeout);
+              console.warn('Backend stream play failed:', e);
+              if (track.source === 'itunes' && track.streamUrl) {
+                showToast('Stream failed. Playing 30-sec preview.', 'warning');
+                state.audio.src = track.streamUrl;
+                state.audio.load();
+                state.audio.play().catch(err => console.warn(err));
+              } else {
+                showToast('Playback failed. Is the backend running?', 'error');
+              }
+            });
+            state.audio.volume = state.volume;
+            initWebAudioContext();
+          } else {
+            // Backend is down — fall back gracefully
+            if (track.source === 'itunes' && track.streamUrl) {
+              showToast('Backend offline. Playing 30-sec preview.', 'warning');
+              state.audio.src = track.streamUrl;
+              state.audio.load();
+              state.audio.play().catch(e => console.warn(e));
+              state.audio.volume = state.volume;
+              initWebAudioContext();
+            } else {
+              // YouTube tracks: last resort = iframe (but warn user)
+              showToast('Backend offline. Start the Python server for full audio!', 'warning');
               state.activePlayerEngine = 'youtube';
               DOM.floatingVideoPlayer.classList.add('active');
               playYouTubeVideo(videoId);
-              showToast('Streaming via YouTube Music', 'success');
             }
-          }, 5000);
-          
-          state.audio.play().then(() => {
-            clearTimeout(streamTimeout);
-            showToast('Streaming full song', 'success');
-          }).catch(e => {
-            clearTimeout(streamTimeout);
-            console.warn('Invidious stream failed, falling back to YouTube iframe:', e);
-            state.audio.src = '';
-            state.activePlayerEngine = 'youtube';
-            DOM.floatingVideoPlayer.classList.add('active');
-            playYouTubeVideo(videoId);
-            showToast('Streaming via YouTube Music', 'success');
-          });
-          state.audio.volume = state.volume;
-          initWebAudioContext();
+          }
         } else {
-          // Could not find video ID — play 30s iTunes preview
-          showToast('Could not find full track. Playing 30-sec preview.', 'warning');
+          // Could not find video ID — play 30s iTunes preview if available
+          if (track.source === 'itunes' && track.streamUrl) {
+            showToast('Could not find full track. Playing 30-sec preview.', 'warning');
+            state.audio.src = track.streamUrl;
+            state.audio.load();
+            state.audio.play().catch(e => console.warn(e));
+            state.audio.volume = state.volume;
+            initWebAudioContext();
+          } else {
+            showToast('Could not resolve video. Please try another track.', 'error');
+          }
+        }
+      } catch (err) {
+        console.error('Full playback resolution failed:', err);
+        if (track.source === 'itunes' && track.streamUrl) {
+          showToast('Playback error. Playing 30-sec preview.', 'warning');
           state.audio.src = track.streamUrl;
           state.audio.load();
           state.audio.play().catch(e => console.warn(e));
           state.audio.volume = state.volume;
           initWebAudioContext();
+        } else {
+          showToast('Playback failed.', 'error');
         }
-      } catch (err) {
-        console.error('iTunes full playback resolution failed:', err);
-        showToast('Playback error. Playing 30-sec preview.', 'warning');
-        state.audio.src = track.streamUrl;
-        state.audio.load();
-        state.audio.play().catch(e => console.warn(e));
-        state.audio.volume = state.volume;
-        initWebAudioContext();
       }
 
       state.isPlaying = true;
@@ -723,17 +973,21 @@ async function playTrack(track, contextQueue = null) {
 
     state.currentTrack = track;
 
-    // 3. Stop all player engines
+    // 3. Stop all player engines smoothly
+    if (state.activePlayerEngine === 'html5' && !state.audio.paused) {
+      await fadeAudioVolume(0, 400); // Crossfade out
+    }
     state.audio.pause();
     stopYouTubeVideo(); // Stop iframe-based YouTube player
     if (state.scWidgetReady) state.scWidget.pause();
 
-    // 4. Divert to Brand Player Engine
+    // 4. Divert to Brand Player Engine (only for non-full-song mode)
     if (track.source === 'youtube') {
+      // When forceFullSongs is OFF, use iframe as before
       state.activePlayerEngine = 'youtube';
       DOM.floatingVideoPlayer.classList.add('active');
 
-      const videoId = track.streamUrl; // YouTube tracks store videoId as streamUrl
+      const videoId = track.streamUrl;
       showToast(`Streaming "${track.title}" from YouTube Music`, 'success');
       playYouTubeVideo(videoId);
 
@@ -759,8 +1013,22 @@ async function playTrack(track, contextQueue = null) {
       }
 
       if (track.source === 'local') {
-        const audioBlob = await db.getLocalTrackAudio(track.id);
-        audioSrc = URL.createObjectURL(audioBlob);
+        // Fetch binary data from indexedDB or OPFS
+        const audioData = await db.getLocalTrackAudio(track.id);
+        
+        // Cleanup previous local blob URL to prevent memory leak
+        if (state.currentBlobUrl) {
+          URL.revokeObjectURL(state.currentBlobUrl);
+          state.currentBlobUrl = null;
+        }
+
+        // Check if audioData is a File (OPFS) or Blob (IndexedDB)
+        if (audioData instanceof File || audioData instanceof Blob) {
+          audioSrc = URL.createObjectURL(audioData);
+          state.currentBlobUrl = audioSrc;
+        } else {
+          throw new Error("Invalid local audio data format");
+        }
         activeBlobUrls.set(track.id, audioSrc);
       } else {
         audioSrc = track.streamUrl;
@@ -768,8 +1036,9 @@ async function playTrack(track, contextQueue = null) {
 
       state.audio.src = audioSrc;
       state.audio.load();
+      state.audio.volume = 0; // Start at 0 for fade in
       state.audio.play().catch(e => console.warn(e));
-      state.audio.volume = state.volume;
+      fadeAudioVolume(state.volume, 800); // Fade in
       
       // Start audio visualizer context
       initWebAudioContext();
@@ -784,9 +1053,12 @@ async function playTrack(track, contextQueue = null) {
   }
 }
 
-function pauseTrack() {
+async function pauseTrack() {
   state.isPlaying = false;
+  updatePlaybackControlsUI();
+  
   if (state.activePlayerEngine === 'html5') {
+    await fadeAudioVolume(0, 400);
     state.audio.pause();
   } else if (state.activePlayerEngine === 'youtube') {
     // For iframe-based YouTube, stop video by clearing src
@@ -797,15 +1069,23 @@ function pauseTrack() {
   }
 }
 
-function resumeTrack() {
+async function resumeTrack() {
   if (!state.currentTrack) {
     if (state.queue.length > 0) playTrack(state.queue[0]);
     return;
   }
 
   state.isPlaying = true;
+  updatePlaybackControlsUI();
+  
+  if (state.audioContext && state.audioContext.state === 'suspended') {
+    state.audioContext.resume();
+  }
+  
   if (state.activePlayerEngine === 'html5') {
+    state.audio.volume = 0;
     state.audio.play().catch(e => console.warn(e));
+    fadeAudioVolume(state.volume, 400);
   } else if (state.activePlayerEngine === 'youtube') {
     // For iframe YouTube, re-play the current track
     if (state.currentTrack) {
@@ -840,7 +1120,7 @@ function prevTrack() {
   playTrack(state.queue[state.queueIndex]);
 }
 
-function handleTrackEnded() {
+async function handleTrackEnded() {
   if (state.repeatMode === 'one') {
     if (state.activePlayerEngine === 'html5') {
       state.audio.currentTime = 0;
@@ -855,6 +1135,61 @@ function handleTrackEnded() {
   } else if (state.repeatMode === 'all' || state.queueIndex < state.queue.length - 1) {
     nextTrack();
   } else {
+    // --- SMART AUTO-DJ (Infinite Mix Algorithm) ---
+    showToast('Auto-DJ is analyzing your taste...', 'info');
+    try {
+      let query = 'trending music';
+      const currentArtist = state.currentTrack?.artist || '';
+      
+      try {
+        // 1. Analyze User's Listening History Profile
+        const topTracks = await db.getTopTracks();
+        
+        if (topTracks && topTracks.length > 0) {
+          // Count plays per artist
+          const artistCounts = {};
+          topTracks.forEach(t => {
+            artistCounts[t.artist] = (artistCounts[t.artist] || 0) + (t.playCount || 1);
+          });
+          
+          // Get top 3 artists to add variety
+          const sortedArtists = Object.keys(artistCounts).sort((a, b) => artistCounts[b] - artistCounts[a]);
+          const topArtists = sortedArtists.slice(0, 3);
+          
+          // Pick a random top artist to avoid playing the same #1 artist infinitely
+          const randomFavorite = topArtists[Math.floor(Math.random() * topArtists.length)];
+          
+          // 2. Blend current vibe with their historical profile
+          if (currentArtist && currentArtist !== randomFavorite) {
+            query = `${currentArtist} and ${randomFavorite} similar songs`;
+          } else {
+            query = `${randomFavorite} best songs radio`;
+          }
+        } else if (currentArtist) {
+          query = `${currentArtist} popular songs`;
+        }
+      } catch(e) {
+        console.warn('Auto-DJ history analysis failed:', e);
+        query = currentArtist ? `${currentArtist} radio` : 'trending music 2026';
+      }
+
+      console.log('Smart Auto-DJ generated query:', query);
+      const results = await api.searchTracks(query);
+      
+      if (results && results.length > 0) {
+        // Filter out tracks already in queue
+        const newTracks = results.filter(rt => !state.queue.find(qt => qt.id === rt.id)).slice(0, 5);
+        if (newTracks.length > 0) {
+          state.queue.push(...newTracks);
+          nextTrack();
+          showToast(`Auto-DJ added ${newTracks.length} personalized tracks!`, 'success');
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Smart Auto-DJ failed:', err);
+    }
+
     state.isPlaying = false;
     updatePlaybackControlsUI();
   }
@@ -876,6 +1211,16 @@ async function updatePlayerBarUI() {
   titleClassList.forEach(c => DOM.playerTitle.classList.remove(c));
   if (titleClassList.includes(track.source)) {
     DOM.playerTitle.classList.add(track.source);
+  }
+
+  // Media Session API (Hardware media keys & Lockscreen info)
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title,
+      artist: track.artist,
+      album: track.album || 'AuraStream',
+      artwork: track.coverUrl ? [{ src: track.coverUrl, sizes: '512x512', type: 'image/jpeg' }] : []
+    });
   }
 
   // Check Favorites database matching
@@ -941,8 +1286,77 @@ function updatePlaybackControlsUI() {
   }
 }
 
-function updateTimelineUI() {
-  // Backwards compatibility, handled now by startTimelineTrackerLoop interval
+// --- Aura Wrapped (Stats) View ---
+async function renderStatsView() {
+  DOM.statsContainer.innerHTML = '<div style="text-align: center; padding: 40px;"><i class="fa-solid fa-circle-notch fa-spin"></i> Loading stats...</div>';
+  const topTracks = await db.getTopTracks();
+  
+  if (topTracks.length === 0) {
+    DOM.statsContainer.innerHTML = `
+      <div style="text-align: center; padding: 40px; color: var(--text-muted);">
+        <i class="fa-solid fa-ghost" style="font-size: 3rem; margin-bottom: 16px;"></i>
+        <p>No listening history found yet. Go play some music!</p>
+      </div>`;
+    return;
+  }
+
+  // Calculate top artist
+  const artistCounts = {};
+  let totalPlays = 0;
+  topTracks.forEach(t => {
+    artistCounts[t.artist] = (artistCounts[t.artist] || 0) + t.playCount;
+    totalPlays += t.playCount;
+  });
+  const topArtist = Object.keys(artistCounts).reduce((a, b) => artistCounts[a] > artistCounts[b] ? a : b);
+
+  let html = `
+    <div style="background: linear-gradient(135deg, var(--primary), #ec4899); border-radius: 12px; padding: 24px; text-align: center; margin-bottom: 24px; box-shadow: 0 10px 25px rgba(236,72,153,0.3);">
+      <h3 style="font-size: 1.2rem; margin-bottom: 8px; color: white; opacity: 0.9;">Your Top Artist</h3>
+      <h2 style="font-size: 2.5rem; margin-bottom: 8px; color: white; text-shadow: 0 2px 10px rgba(0,0,0,0.3);">${topArtist}</h2>
+      <p style="color: rgba(255,255,255,0.8); font-size: 0.95rem;">${artistCounts[topArtist]} plays out of ${totalPlays} total</p>
+    </div>
+    
+    <h3 style="color: var(--text-secondary); margin-bottom: 12px; font-size: 1rem; border-bottom: 1px solid var(--border-glass); padding-bottom: 8px;">Top 10 Tracks</h3>
+  `;
+
+  topTracks.slice(0, 10).forEach((track, index) => {
+    html += `
+      <div class="track-row track-row-stats" style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-glass); cursor: default;">
+        <div class="track-col-number" style="font-size: 1.2rem; font-weight: bold; color: var(--primary);">${index + 1}</div>
+        <div class="track-col-title">
+          <img src="${track.coverUrl || 'assets/album-default.svg'}" alt="Cover" style="width: 40px; height: 40px; border-radius: 6px; object-fit: cover;">
+          <div class="track-info">
+            <span class="track-name" style="font-size: 1rem; color: var(--text-primary);">${track.title}</span>
+            <span class="track-artist">${track.artist}</span>
+          </div>
+        </div>
+        <div class="track-col-album" style="justify-content: flex-end; padding-right: 20px;">
+          <span style="background: var(--primary); padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; color: white; font-weight: 500;">
+            <i class="fa-solid fa-play" style="font-size: 0.7rem; margin-right: 4px;"></i> ${track.playCount}
+          </span>
+        </div>
+      </div>
+    `;
+  });
+
+  DOM.statsContainer.innerHTML = html;
+}
+
+// --- Reverb Impulse Synthesizer ---
+function createReverbImpulseResponse(audioContext) {
+  // Create a 2 second impulse response
+  const sampleRate = audioContext.sampleRate;
+  const length = sampleRate * 2.5; 
+  const impulse = audioContext.createBuffer(2, length, sampleRate);
+  
+  for (let i = 0; i < 2; i++) {
+    const channelData = impulse.getChannelData(i);
+    for (let j = 0; j < length; j++) {
+      // Exponential decay white noise
+      channelData[j] = (Math.random() * 2 - 1) * Math.pow(1 - j / length, 3);
+    }
+  }
+  return impulse;
 }
 
 // --- Web Audio Visualizer API ---
@@ -957,8 +1371,73 @@ function initWebAudioContext() {
     state.analyser.fftSize = 256;
     
     state.sourceNode = state.audioContext.createMediaElementSource(state.audio);
-    state.sourceNode.connect(state.analyser);
+    
+    // Equalizer Filters
+    state.eqBassNode = state.audioContext.createBiquadFilter();
+    state.eqBassNode.type = 'lowshelf';
+    state.eqBassNode.frequency.value = 150;
+    
+    state.eqTrebleNode = state.audioContext.createBiquadFilter();
+    state.eqTrebleNode.type = 'highshelf';
+    state.eqTrebleNode.frequency.value = 4000;
+
+    // Reverb Node (Convolver)
+    state.reverbNode = state.audioContext.createConvolver();
+    state.reverbNode.buffer = createReverbImpulseResponse(state.audioContext);
+    
+    // Panner Node (8D Audio)
+    state.pannerNode = state.audioContext.createPanner();
+    state.pannerNode.panningModel = 'HRTF';
+    state.pannerNode.distanceModel = 'inverse';
+    state.pannerNode.refDistance = 1;
+    state.pannerNode.maxDistance = 10000;
+    state.pannerNode.rolloffFactor = 1;
+    state.pannerNode.coneInnerAngle = 360;
+    state.pannerNode.coneOuterAngle = 0;
+    state.pannerNode.coneOuterGain = 0;
+    // Set listener to origin
+    if (state.audioContext.listener.positionX) {
+      state.audioContext.listener.positionX.value = 0;
+      state.audioContext.listener.positionY.value = 0;
+      state.audioContext.listener.positionZ.value = 0;
+    } else {
+      state.audioContext.listener.setPosition(0, 0, 0);
+    }
+    
+    // Dry/Wet Reverb Mixer (Gain)
+    state.reverbGainNode = state.audioContext.createGain();
+    state.reverbGainNode.gain.value = 0; // 0 = Dry (Normal), 0.5 = Wet (Slowed + Reverb)
+
+    state.dryGainNode = state.audioContext.createGain();
+    state.dryGainNode.gain.value = 1;
+
+    // Restore UI values if moved before playback started
+    if (DOM.eqBass) state.eqBassNode.gain.value = parseInt(DOM.eqBass.value) || 0;
+    if (DOM.eqTreble) state.eqTrebleNode.gain.value = parseInt(DOM.eqTreble.value) || 0;
+
+    // Connect routing graph:
+    // Source -> Bass -> Treble -> (Split to Dry and Reverb) -> Panner -> Analyser -> Destination
+    state.sourceNode.connect(state.eqBassNode);
+    state.eqBassNode.connect(state.eqTrebleNode);
+    
+    // Split
+    state.eqTrebleNode.connect(state.dryGainNode);
+    state.eqTrebleNode.connect(state.reverbNode);
+    
+    // Reverb to its gain
+    state.reverbNode.connect(state.reverbGainNode);
+    
+    // Merge Dry and Reverb -> Panner
+    state.dryGainNode.connect(state.pannerNode);
+    state.reverbGainNode.connect(state.pannerNode);
+    
+    // Panner -> Analyser -> Destination
+    state.pannerNode.connect(state.analyser);
     state.analyser.connect(state.audioContext.destination);
+
+    // Apply remix mode if it was changed before playing
+    applyRemixMode(state.remixMode);
+
   } catch (error) {
     console.warn('Web Audio node CORS error. Visualizer running in mathematical simulation mode.', error);
   }
@@ -969,85 +1448,229 @@ function initVisualizerCanvas() {
   state.visualizerActive = true;
   
   const canvas = DOM.visCanvas;
-  const ctx = canvas.getContext('2d');
+  let gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
   
+  if (!gl) {
+    console.error('WebGL not supported');
+    return;
+  }
+
   const resizeCanvas = () => {
     canvas.width = canvas.parentElement.clientWidth * window.devicePixelRatio;
     canvas.height = 180 * window.devicePixelRatio;
-    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    gl.viewport(0, 0, canvas.width, canvas.height);
   };
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
-  
+
+  // Phase 1: GLSL Cosmic Shader
+  const vsSource = `
+    attribute vec4 aVertexPosition;
+    void main() { gl_Position = aVertexPosition; }
+  `;
+
+  const fsSource = `
+    precision mediump float;
+    uniform vec2 u_resolution;
+    uniform float u_time;
+    uniform float u_bass;
+    uniform float u_treble;
+    uniform vec3 u_color1;
+    uniform vec3 u_color2;
+
+    mat2 rot(float a) {
+        float s = sin(a), c = cos(a);
+        return mat2(c, -s, s, c);
+    }
+
+    float star(vec2 uv, float flare) {
+        float d = length(uv);
+        float m = 0.05 / d;
+        float rays = max(0.0, 1.0 - abs(uv.x * uv.y * 1000.0));
+        m += rays * flare;
+        uv *= rot(3.1415 / 4.0);
+        rays = max(0.0, 1.0 - abs(uv.x * uv.y * 1000.0));
+        m += rays * 0.3 * flare;
+        m *= smoothstep(1.0, 0.2, d);
+        return m;
+    }
+
+    float hash21(vec2 p) {
+        p = fract(p * vec2(123.34, 456.21));
+        p += dot(p, p + 45.32);
+        return fract(p.x * p.y);
+    }
+
+    vec3 starLayer(vec2 uv) {
+        vec3 col = vec3(0.0);
+        vec2 gv = fract(uv) - 0.5;
+        vec2 id = floor(uv);
+        for(int y=-1;y<=1;y++){
+            for(int x=-1;x<=1;x++){
+                vec2 offs = vec2(x, y);
+                float n = hash21(id + offs);
+                float size = fract(n * 345.32);
+                float star_val = star(gv - offs - vec2(n, fract(n*34.0)) + 0.5, smoothstep(0.8, 1.0, size));
+                vec3 color = sin(u_color1 * fract(n*2345.2) * 123.2) * 0.5 + 0.5;
+                color = color * vec3(1.0, 0.5, 1.0 + size);
+                col += star_val * size * color;
+            }
+        }
+        return col;
+    }
+
+    void main() {
+        vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / u_resolution.y;
+        float t = u_time * 0.02;
+        uv *= rot(t);
+        
+        vec3 col = vec3(0.0);
+        // Warp speed effect on bass
+        float speed = u_time * (0.1 + u_bass * 0.015);
+        
+        for(float i=0.0; i<1.0; i+=0.25) {
+            float depth = fract(i + speed);
+            float scale = mix(20.0, 0.5, depth);
+            float fade = depth * smoothstep(1.0, 0.9, depth);
+            col += starLayer(uv * scale + i * 453.2) * fade;
+        }
+        
+        float core = 0.1 / length(uv);
+        col += mix(u_color2, u_color1, sin(u_time)*0.5+0.5) * core * (u_treble * 0.01);
+        
+        gl_FragColor = vec4(col, 1.0);
+    }
+  `;
+
+  function loadShader(gl, type, source) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      console.error('Shader error: ' + gl.getShaderInfoLog(shader));
+      gl.deleteShader(shader);
+      return null;
+    }
+    return shader;
+  }
+
+  const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+  const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+  const shaderProgram = gl.createProgram();
+  gl.attachShader(shaderProgram, vertexShader);
+  gl.attachShader(shaderProgram, fragmentShader);
+  gl.linkProgram(shaderProgram);
+
+  const programInfo = {
+    program: shaderProgram,
+    attribLocations: { vertexPosition: gl.getAttribLocation(shaderProgram, 'aVertexPosition') },
+    uniformLocations: {
+      resolution: gl.getUniformLocation(shaderProgram, 'u_resolution'),
+      time: gl.getUniformLocation(shaderProgram, 'u_time'),
+      bass: gl.getUniformLocation(shaderProgram, 'u_bass'),
+      treble: gl.getUniformLocation(shaderProgram, 'u_treble'),
+      color1: gl.getUniformLocation(shaderProgram, 'u_color1'),
+      color2: gl.getUniformLocation(shaderProgram, 'u_color2'),
+    },
+  };
+
+  const positionBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, -1.0]), gl.STATIC_DRAW);
+
   const colorPalettes = [
-    { bg: 'rgba(15, 17, 26, 0.4)', start: '#8b5cf6', end: '#6366f1' },
-    { bg: 'rgba(11, 23, 20, 0.4)', start: '#06b6d4', end: '#10b981' },
-    { bg: 'rgba(23, 11, 22, 0.4)', start: '#ec4899', end: '#a855f7' }
+    { start: [139/255, 92/255, 246/255], end: [99/255, 102/255, 241/255], hexStart: '#8b5cf6', hexEnd: '#6366f1' },
+    { start: [6/255, 182/255, 212/255], end: [16/255, 185/255, 129/255], hexStart: '#06b6d4', hexEnd: '#10b981' },
+    { start: [236/255, 72/255, 153/255], end: [168/255, 85/255, 247/255], hexStart: '#ec4899', hexEnd: '#a855f7' }
   ];
+
+  let startTime = Date.now();
 
   function renderFrame() {
     if (!state.visualizerActive) return;
-    
     state.animationFrameId = requestAnimationFrame(renderFrame);
     
-    const width = canvas.width / window.devicePixelRatio;
-    const height = canvas.height / window.devicePixelRatio;
-    
-    ctx.fillStyle = 'rgba(6, 7, 10, 0.2)';
-    ctx.fillRect(0, 0, width, height);
-
-    const palette = colorPalettes[state.visualizerStyle];
     const bufferLength = state.analyser ? state.analyser.frequencyBinCount : 64;
     const dataArray = new Uint8Array(bufferLength);
     
-    // Only fetch frequency spectrum for HTML5 audio to prevent cross-origin security blockings
     if (state.analyser && state.isPlaying && state.activePlayerEngine === 'html5') {
       state.analyser.getByteFrequencyData(dataArray);
     } else {
-      // Wavy mathematical formula for YouTube/SoundCloud
-      const time = Date.now() * 0.004;
+      const t2 = Date.now() * 0.004;
       for (let i = 0; i < bufferLength; i++) {
         if (state.isPlaying) {
-          dataArray[i] = Math.abs(Math.sin(i * 0.1 + time) * Math.cos(i * 0.05 + time * 0.5)) * 140 + Math.random() * 20;
+          dataArray[i] = Math.abs(Math.sin(i * 0.1 + t2) * Math.cos(i * 0.05 + t2 * 0.5)) * 140 + Math.random() * 20;
         } else {
-          dataArray[i] = Math.max(10, Math.sin(i * 0.15 + time * 0.25) * 8 + 8);
+          dataArray[i] = Math.max(10, Math.sin(i * 0.15 + t2 * 0.25) * 8 + 8);
         }
       }
     }
 
-    const barWidth = (width / bufferLength) * 1.5;
-    let barHeight;
-    let x = 0;
+    let bassEnergy = 0;
+    for (let i = 0; i < 8; i++) bassEnergy += dataArray[i];
+    const averageBass = bassEnergy / 8;
+
+    let trebleEnergy = 0;
+    for (let i = bufferLength - 16; i < bufferLength; i++) trebleEnergy += dataArray[i];
+    const averageTreble = trebleEnergy / 16;
     
-    const gradient = ctx.createLinearGradient(0, height, 0, 0);
-    gradient.addColorStop(0, palette.end);
-    gradient.addColorStop(1, palette.start);
-
-    for (let i = 0; i < bufferLength; i++) {
-      barHeight = (dataArray[i] / 255) * (height * 0.85);
-      if (barHeight < 4) barHeight = 4;
-
-      ctx.fillStyle = gradient;
-      
-      const radius = barWidth / 2;
-      const barY = height - barHeight;
-      
-      ctx.beginPath();
-      ctx.moveTo(x, height);
-      ctx.lineTo(x, barY + radius);
-      ctx.quadraticCurveTo(x, barY, x + radius, barY);
-      ctx.quadraticCurveTo(x + barWidth, barY, x + barWidth, barY + radius);
-      ctx.lineTo(x + barWidth, height);
-      ctx.closePath();
-      ctx.fill();
-
-      x += barWidth + 2.5;
+    if (DOM.visCover) {
+      const hexToRgba = (hex, alpha) => {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      };
+      const palette = colorPalettes[state.visualizerStyle];
+      const scale = 1 + (Math.max(0, averageBass - 120) / 135) * 0.15;
+      const glowIntensity = Math.max(0, averageBass - 100) / 155; 
+      DOM.visCover.style.transform = `scale(${scale})`;
+      if (glowIntensity > 0.05) {
+        DOM.visCover.style.boxShadow = `0 20px 60px ${hexToRgba(palette.hexStart, glowIntensity)}, 0 0 40px ${hexToRgba(palette.hexEnd, glowIntensity)}`;
+      } else {
+        DOM.visCover.style.boxShadow = '0 10px 40px rgba(0,0,0,0.5)';
+      }
     }
+
+    gl.clearColor(0.02, 0.03, 0.04, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition);
+
+    gl.useProgram(programInfo.program);
+
+    const time = (Date.now() - startTime) / 1000;
+    gl.uniform2f(programInfo.uniformLocations.resolution, canvas.width, canvas.height);
+    gl.uniform1f(programInfo.uniformLocations.time, time);
+    gl.uniform1f(programInfo.uniformLocations.bass, averageBass);
+    gl.uniform1f(programInfo.uniformLocations.treble, averageTreble);
+    
+    const p = colorPalettes[state.visualizerStyle];
+    gl.uniform3f(programInfo.uniformLocations.color1, p.start[0], p.start[1], p.start[2]);
+    gl.uniform3f(programInfo.uniformLocations.color2, p.end[0], p.end[1], p.end[2]);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
   renderFrame();
+  
+  // Prevent Memory Leak: Pause visualizer when tab is hidden
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (state.animationFrameId) {
+        cancelAnimationFrame(state.animationFrameId);
+        state.animationFrameId = null;
+      }
+    } else {
+      if (state.isPlaying && !state.animationFrameId) {
+        renderFrame();
+      }
+    }
+  });
 }
-
 function stopVisualizerCanvas() {
   state.visualizerActive = false;
   if (state.animationFrameId) {
@@ -1134,7 +1757,7 @@ async function fetchTrendingTracks() {
   DOM.trendingGrid.innerHTML = `
     <div style="grid-column: 1/-1; padding: 40px; text-align: center; color: var(--text-muted);">
       <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; margin-bottom: 12px; color: var(--primary);"></i>
-      <p>Loading trending tracks from Audius API...</p>
+      <p>Loading real-time Top Tracks from iTunes Charts...</p>
     </div>
   `;
 
@@ -1155,7 +1778,7 @@ async function fetchTrendingTracks() {
     const card = document.createElement('div');
     card.className = 'music-card';
     card.innerHTML = `
-      <span class="card-badge audius">Audius</span>
+      <span class="card-badge itunes" style="background: rgba(255, 42, 109, 0.8);">iTunes</span>
       <div class="card-img-container">
         <img class="card-img" src="${track.coverUrl || ''}" alt="${track.title}">
         <button class="card-play-btn"><i class="fa-solid fa-play"></i></button>
@@ -1871,11 +2494,15 @@ function seekAudio(e) {
   if (state.activePlayerEngine === 'html5' && state.audio && !isNaN(state.audio.duration)) {
     state.audio.currentTime = percent * state.audio.duration;
   } else if (state.activePlayerEngine === 'youtube' && state.ytPlayerReady) {
-    const duration = state.ytPlayer.getDuration();
-    state.ytPlayer.seekTo(percent * duration, true);
-  } else if (state.activePlayerEngine === 'soundcloud' && state.scWidgetReady) {
+    if (typeof state.ytPlayer.getDuration === 'function' && typeof state.ytPlayer.seekTo === 'function') {
+      const duration = state.ytPlayer.getDuration();
+      state.ytPlayer.seekTo(percent * duration, true);
+    }
+  } else if (state.activePlayerEngine === 'soundcloud' && state.scWidgetReady && typeof state.scWidget.getDuration === 'function') {
     state.scWidget.getDuration((durationMs) => {
-      state.scWidget.seekTo(percent * durationMs);
+      if (typeof state.scWidget.seekTo === 'function') {
+        state.scWidget.seekTo(percent * durationMs);
+      }
     });
   }
 }
@@ -1891,8 +2518,8 @@ function adjustVolume(e) {
   
   // Sync to active engines
   if (state.audio) state.audio.volume = state.volume;
-  if (state.ytPlayerReady) state.ytPlayer.setVolume(state.volume * 100);
-  if (state.scWidgetReady) state.scWidget.setVolume(state.volume * 100);
+  if (state.ytPlayerReady && typeof state.ytPlayer.setVolume === 'function') state.ytPlayer.setVolume(state.volume * 100);
+  if (state.scWidgetReady && typeof state.scWidget.setVolume === 'function') state.scWidget.setVolume(state.volume * 100);
   
   DOM.playerVolumeBar.style.width = `${percent * 100}%`;
   updateVolumeButtonUI();
@@ -1909,8 +2536,8 @@ function toggleMute() {
   }
 
   if (state.audio) state.audio.volume = state.volume;
-  if (state.ytPlayerReady) state.ytPlayer.setVolume(state.volume * 100);
-  if (state.scWidgetReady) state.scWidget.setVolume(state.volume * 100);
+  if (state.ytPlayerReady && typeof state.ytPlayer.setVolume === 'function') state.ytPlayer.setVolume(state.volume * 100);
+  if (state.scWidgetReady && typeof state.scWidget.setVolume === 'function') state.scWidget.setVolume(state.volume * 100);
   
   DOM.playerVolumeBar.style.width = `${state.volume * 100}%`;
   updateVolumeButtonUI();
@@ -1971,14 +2598,91 @@ function makePlayerDraggable() {
   }
 }
 
+// --- Remix Modes (Speed & Pitch) ---
+function applyRemixMode(mode) {
+  state.remixMode = mode;
+  let rate = 1.0;
+  let reverbWet = 0;
+  let dryMix = 1;
+  let preservesPitch = true;
+
+  if (mode === 'nightcore') {
+    rate = 1.25;
+    preservesPitch = false;
+  } else if (mode === 'slowed') {
+    rate = 0.85;
+    preservesPitch = false;
+    reverbWet = 0.6;
+    dryMix = 0.8;
+  }
+
+  // Apply to HTML5 Audio
+  if (state.audio) {
+    state.audio.playbackRate = rate;
+    state.audio.preservesPitch = preservesPitch;
+    if (state.audio.webkitPreservesPitch !== undefined) state.audio.webkitPreservesPitch = preservesPitch;
+    if (state.audio.mozPreservesPitch !== undefined) state.audio.mozPreservesPitch = preservesPitch;
+  }
+
+  // Apply to YouTube
+  if (state.ytPlayerReady && state.ytPlayer.setPlaybackRate) {
+    state.ytPlayer.setPlaybackRate(rate);
+  }
+
+  // Apply to Reverb (Web Audio API)
+  if (state.reverbGainNode && state.dryGainNode) {
+    state.reverbGainNode.gain.setTargetAtTime(reverbWet, state.audioContext.currentTime, 0.1);
+    state.dryGainNode.gain.setTargetAtTime(dryMix, state.audioContext.currentTime, 0.1);
+  }
+}
+
 // --- Event Bindings & Bootstrap ---
 function bindEvents() {
+  // Media Session API Actions
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.setActionHandler('play', () => resumeTrack());
+    navigator.mediaSession.setActionHandler('pause', () => pauseTrack());
+    navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
+    navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack());
+  }
+
   DOM.menuItems.forEach(item => {
     item.addEventListener('click', () => {
       const view = item.getAttribute('data-view');
-      navigateToView(view);
+      if (view) navigateToView(view);
     });
   });
+
+  // Remix Mode bindings
+  if (DOM.remixRadios) {
+    DOM.remixRadios.forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        applyRemixMode(e.target.value);
+      });
+    });
+  }
+
+  // Mobile Swipe Gestures on Player Bar
+  let touchStartX = 0;
+  const playerBar = document.querySelector('.player-bar');
+  if (playerBar) {
+    playerBar.addEventListener('touchstart', (e) => {
+      touchStartX = e.changedTouches[0].screenX;
+    }, { passive: true });
+
+    playerBar.addEventListener('touchend', (e) => {
+      const touchEndX = e.changedTouches[0].screenX;
+      const deltaX = touchEndX - touchStartX;
+
+      if (deltaX < -50) {
+        // Swipe Left -> Next Track
+        nextTrack();
+      } else if (deltaX > 50) {
+        // Swipe Right -> Prev Track
+        prevTrack();
+      }
+    }, { passive: true });
+  }
 
   DOM.globalSearch.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -1991,6 +2695,42 @@ function bindEvents() {
       navigateToView('home');
     }
   });
+
+  // Voice Command implementation
+  if (DOM.voiceSearchBtn) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'id-ID'; // support indonesian / local
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      DOM.voiceSearchBtn.addEventListener('click', () => {
+        showToast('Listening...', 'info');
+        DOM.voiceSearchBtn.style.color = 'var(--primary)';
+        recognition.start();
+      });
+
+      recognition.addEventListener('result', (e) => {
+        const transcript = e.results[0][0].transcript;
+        DOM.globalSearch.value = transcript;
+        showToast(`Heard: "${transcript}"`, 'success');
+        DOM.voiceSearchBtn.style.color = '';
+        executeGlobalSearch(transcript);
+      });
+
+      recognition.addEventListener('end', () => {
+        DOM.voiceSearchBtn.style.color = '';
+      });
+
+      recognition.addEventListener('error', (e) => {
+        showToast(`Voice error: ${e.error}`, 'error');
+        DOM.voiceSearchBtn.style.color = '';
+      });
+    } else {
+      DOM.voiceSearchBtn.style.display = 'none';
+    }
+  }
 
   DOM.filterAll.addEventListener('click', () => {
     state.searchSourceFilter = 'all';
@@ -2204,6 +2944,226 @@ function bindEvents() {
   modalShortcutsClose?.addEventListener('click', closeShortcutsModal);
   modalShortcuts?.addEventListener('click', e => { if (e.target === modalShortcuts) closeShortcutsModal(); });
 
+  // Modals: Lyrics, EQ, Settings
+  // Lyrics
+  DOM.playerLyricsBtn?.addEventListener('click', async () => {
+    if (!state.currentTrack) return;
+    DOM.modalLyrics.classList.add('active');
+    DOM.lyricsContent.innerHTML = '<div style="text-align: center; margin-top: 20px;"><i class="fa-solid fa-circle-notch fa-spin"></i><p style="margin-top: 10px;">Finding Best Lyrics...</p></div>';
+    
+    state.currentLyrics = [];
+    state.lastLyricIndex = -1;
+
+    // Try synced lyrics from LRCLIB first
+    let lyricsData = await api.fetchSyncedLyrics(state.currentTrack.artist, state.currentTrack.title);
+    
+    if (lyricsData) {
+      if (lyricsData.synced) {
+        state.currentLyrics = parseLRC(lyricsData.text);
+        
+        // Render interactive UI
+        DOM.lyricsContent.innerHTML = '';
+        state.currentLyrics.forEach((lyric, idx) => {
+          const span = document.createElement('span');
+          span.className = 'lyric-line';
+          span.textContent = lyric.text;
+          span.addEventListener('click', () => {
+            // Seek to this lyric time
+            if (state.activePlayerEngine === 'html5' && state.audio) {
+              state.audio.currentTime = lyric.time;
+            } else if (state.activePlayerEngine === 'youtube' && state.ytPlayerReady && state.ytPlayer.seekTo) {
+               state.ytPlayer.seekTo(lyric.time, true);
+            }
+          });
+          DOM.lyricsContent.appendChild(span);
+        });
+      } else {
+        // Render plain text nicely formatted
+        DOM.lyricsContent.innerHTML = `<div style="white-space: pre-wrap; font-size: 1.1rem; line-height: 1.8; text-align: center; opacity: 0.8;">${lyricsData.text}</div>`;
+      }
+    } else {
+      // Fallback to legacy lyrics.ovh
+      const lyrics = await api.fetchLyrics(state.currentTrack.artist, state.currentTrack.title);
+      if (lyrics) {
+        DOM.lyricsContent.innerHTML = `<div style="white-space: pre-wrap; font-size: 1.1rem; line-height: 1.8; text-align: center; opacity: 0.8;">${lyrics}</div>`;
+      } else {
+        DOM.lyricsContent.innerHTML = '<div style="text-align: center;"><p style="color: var(--text-muted);">Lyrics not found for this track.</p><i class="fa-solid fa-music" style="font-size: 3rem; color: var(--border-glass); margin-top: 40px;"></i></div>';
+      }
+    }
+  });
+  DOM.modalLyricsClose?.addEventListener('click', () => DOM.modalLyrics.classList.remove('active'));
+  DOM.modalLyrics?.addEventListener('click', e => { if (e.target === DOM.modalLyrics) DOM.modalLyrics.classList.remove('active'); });
+
+  // EQ
+  DOM.playerEqBtn?.addEventListener('click', () => {
+    DOM.modalEq.classList.add('active');
+  });
+  DOM.modalEqClose?.addEventListener('click', () => DOM.modalEq.classList.remove('active'));
+  DOM.modalEq?.addEventListener('click', e => { if (e.target === DOM.modalEq) DOM.modalEq.classList.remove('active'); });
+  
+  DOM.eqBass?.addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    DOM.eqBassVal.textContent = `${val > 0 ? '+' : ''}${val} dB`;
+    if (state.eqBassNode) state.eqBassNode.gain.value = val;
+  });
+  DOM.eqTreble?.addEventListener('input', (e) => {
+    const val = parseInt(e.target.value);
+    DOM.eqTrebleVal.textContent = `${val > 0 ? '+' : ''}${val} dB`;
+    if (state.eqTrebleNode) state.eqTrebleNode.gain.value = val;
+  });
+  DOM.eqSpatialToggle?.addEventListener('change', (e) => {
+    state.spatialEnabled = e.target.checked;
+    if (!state.spatialEnabled && state.pannerNode) {
+      state.pannerNode.positionX.value = 0;
+      state.pannerNode.positionY.value = 0;
+      state.pannerNode.positionZ.value = 0;
+    }
+  });
+  DOM.eqResetBtn?.addEventListener('click', () => {
+    DOM.eqBass.value = 0;
+    DOM.eqTreble.value = 0;
+    DOM.eqBassVal.textContent = '0 dB';
+    DOM.eqTrebleVal.textContent = '0 dB';
+    if (state.eqBassNode) state.eqBassNode.gain.value = 0;
+    if (state.eqTrebleNode) state.eqTrebleNode.gain.value = 0;
+    if (DOM.eqSpatialToggle) {
+      DOM.eqSpatialToggle.checked = false;
+      state.spatialEnabled = false;
+      if (state.pannerNode) {
+        state.pannerNode.positionX.value = 0;
+        state.pannerNode.positionY.value = 0;
+        state.pannerNode.positionZ.value = 0;
+      }
+    }
+  });
+
+  // Settings / Backup & Restore
+  DOM.sidebarSettingsBtn?.addEventListener('click', () => {
+    DOM.settingsFullsongToggle.checked = state.forceFullSongs;
+    DOM.modalSettings.classList.add('active');
+    if (window.innerWidth <= 768) closeMobileSidebar();
+  });
+  
+  DOM.settingsFullsongToggle.addEventListener('change', (e) => {
+    state.forceFullSongs = e.target.checked;
+    showToast(state.forceFullSongs ? 'Full songs enabled (YouTube lookup)' : 'Instant 30s previews enabled', 'info');
+  });
+
+  DOM.sidebarLoginBtn?.addEventListener('click', async () => {
+    if (db.currentUser) {
+      DOM.profileNameText.textContent = db.currentUser.name || 'User';
+      DOM.profileEmailText.textContent = db.currentUser.email || 'No email';
+      DOM.modalProfile.classList.add('active');
+    } else {
+      DOM.modalLogin.classList.add('active');
+    }
+    if (window.innerWidth <= 768) closeMobileSidebar();
+  });
+  
+  // Login Modal Handlers
+  DOM.modalLoginClose?.addEventListener('click', () => DOM.modalLogin.classList.remove('active'));
+  DOM.modalLogin?.addEventListener('click', e => { if (e.target === DOM.modalLogin) DOM.modalLogin.classList.remove('active'); });
+
+  // Profile Modal Handlers
+  DOM.modalProfileClose?.addEventListener('click', () => DOM.modalProfile.classList.remove('active'));
+  DOM.modalProfile?.addEventListener('click', e => { if (e.target === DOM.modalProfile) DOM.modalProfile.classList.remove('active'); });
+
+  DOM.profileLogoutBtn?.addEventListener('click', async () => {
+    await db.logout();
+    DOM.modalProfile.classList.remove('active');
+    showToast('Logged out successfully.', 'info');
+  });
+
+  DOM.profileEditBtn?.addEventListener('click', async () => {
+    const newName = prompt('Enter your new display name:', db.currentUser?.name || '');
+    if (newName && newName.trim() !== '') {
+      db.currentUser.name = newName.trim();
+      await db.saveSetting('currentUser', db.currentUser);
+      DOM.profileNameText.textContent = db.currentUser.name;
+      showToast('Profile name updated!', 'success');
+      await db.syncToCloud();
+    }
+  });
+
+  DOM.profileSyncBtn?.addEventListener('click', async () => {
+    showToast('Initiating Cloud Sync...', 'info');
+    await db.syncToCloud();
+    showToast('Data Synced with Cloud!', 'success');
+  });
+
+  DOM.loginSubmitBtn?.addEventListener('click', async () => {
+    const email = DOM.loginEmailInput.value.trim();
+    const pwd = DOM.loginPasswordInput.value;
+    if (!email || pwd.length < 6) {
+      showToast('Email & password (min 6 chars) required.', 'error');
+      return;
+    }
+    showToast('Authenticating...', 'info');
+    try {
+      await db.login(email, pwd);
+      DOM.modalLogin.classList.remove('active');
+      showToast(`Welcome back, ${db.currentUser.name}!`, 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+
+  DOM.registerSubmitBtn?.addEventListener('click', async () => {
+    const email = DOM.loginEmailInput.value.trim();
+    const pwd = DOM.loginPasswordInput.value;
+    if (!email || pwd.length < 6) {
+      showToast('Email & password (min 6 chars) required.', 'error');
+      return;
+    }
+    showToast('Creating account...', 'info');
+    try {
+      await db.register(email, pwd);
+      DOM.modalLogin.classList.remove('active');
+      showToast(`Welcome, ${db.currentUser.name}! Account created.`, 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
+  DOM.modalSettingsClose?.addEventListener('click', () => DOM.modalSettings.classList.remove('active'));
+  DOM.modalSettings?.addEventListener('click', e => { if (e.target === DOM.modalSettings) DOM.modalSettings.classList.remove('active'); });
+  
+  DOM.settingsExportBtn?.addEventListener('click', async () => {
+    try {
+      const jsonStr = await db.exportData();
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `aurastream_backup_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Data exported successfully!', 'success');
+    } catch (e) {
+      showToast('Export failed.', 'error');
+    }
+  });
+
+  DOM.settingsImportBtn?.addEventListener('click', () => {
+    DOM.settingsImportFile.click();
+  });
+
+  DOM.settingsImportFile?.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        await db.importData(event.target.result);
+        showToast('Data imported successfully! Reloading...', 'success');
+        setTimeout(() => window.location.reload(), 1500);
+      } catch (err) {
+        showToast('Invalid backup file.', 'error');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // reset
+  });
+
   // ── Global Keyboard Shortcuts ─────────────────────────────
   document.addEventListener('keydown', e => {
     const tag = document.activeElement.tagName.toLowerCase();
@@ -2226,9 +3186,129 @@ function bindEvents() {
         closeAboutModal();
         closeShortcutsModal();
         closeMobileSidebar();
+        DOM.modalLyrics?.classList.remove('active');
+        DOM.modalEq?.classList.remove('active');
+        DOM.modalSettings?.classList.remove('active');
         break;
     }
   });
+
+  // Party Room (Listen Together via Firebase Realtime Database)
+  let partyRoomRef = null;
+  let partyRoomId = null;
+
+  DOM.partyRoomBtn?.addEventListener('click', () => {
+    if (partyRoomRef) {
+      showToast('You are already in a Party Room.', 'warning');
+      return;
+    }
+    
+    if (typeof firebase === 'undefined' || typeof firebase.database === 'undefined') {
+      showToast('Firebase SDK is missing or not configured.', 'error');
+      return;
+    }
+
+    showToast('Connecting to Cloud...', 'info');
+    
+    // Check URL to see if we are joining or hosting
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomParam = urlParams.get('room');
+
+    try {
+      const db = firebase.database();
+      
+      if (roomParam) {
+        // Join Room
+        partyRoomId = roomParam;
+        partyRoomRef = db.ref('partyRooms/' + partyRoomId);
+        
+        showToast(`Joined Party Room: ${partyRoomId}`, 'success');
+        DOM.partyRoomBtn.style.color = '#10b981'; // Green
+        DOM.partyRoomBtn.innerHTML = '<i class="fa-solid fa-satellite-dish"></i> Connected';
+        
+        // Listen for host playback changes
+        partyRoomRef.on('value', (snapshot) => {
+          const data = snapshot.val();
+          if (data) handlePartyRoomData(data);
+        });
+
+        // Notify we joined (optional, just writing a timestamp to 'lastActivity')
+        partyRoomRef.update({ joinerActivity: Date.now() });
+        
+      } else {
+        // Host Room
+        partyRoomId = 'aura-' + Math.random().toString(36).substring(2, 8);
+        partyRoomRef = db.ref('partyRooms/' + partyRoomId);
+        
+        partyRoomRef.set({
+          createdAt: Date.now(),
+          hostActive: true
+        });
+
+        // Clean up when disconnect
+        partyRoomRef.onDisconnect().remove();
+
+        const shareUrl = `${window.location.origin}${window.location.pathname}?room=${partyRoomId}`;
+        navigator.clipboard.writeText(shareUrl).then(() => {
+          showToast('Party Room created! Link copied to clipboard.', 'success');
+          DOM.partyRoomBtn.style.color = '#10b981';
+          DOM.partyRoomBtn.innerHTML = `<i class="fa-solid fa-satellite-dish"></i> Hosting`;
+        }).catch(() => {
+          showToast(`Room ID: ${partyRoomId} (copy to URL ?room=${partyRoomId})`, 'success');
+        });
+
+        // Listen for joiner activity
+        partyRoomRef.child('joinerActivity').on('value', (snap) => {
+          if (snap.val()) {
+            showToast('A friend joined your party!', 'success');
+            sendSyncData();
+          }
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      showToast(`Database error. Make sure Firebase is configured.`, 'error');
+      partyRoomRef = null;
+    }
+  });
+
+  function handlePartyRoomData(data) {
+    if (data.track) {
+      if (!state.currentTrack || state.currentTrack.id !== data.track.id) {
+        showToast(`Host playing: ${data.track.title}`, 'info');
+        playTrack(data.track);
+      } else {
+        // If time diff is > 2s, sync
+        if (state.activePlayerEngine === 'html5' && state.audio && Math.abs(state.audio.currentTime - data.time) > 2) {
+           state.audio.currentTime = data.time;
+        }
+      }
+      if (data.isPlaying && !state.isPlaying) resumeTrack();
+      if (!data.isPlaying && state.isPlaying) pauseTrack();
+    }
+  }
+
+  function sendSyncData() {
+    if (partyRoomRef && partyRoomId && !urlParamsHasRoom()) {
+      partyRoomRef.update({
+        track: state.currentTrack,
+        time: state.audio ? state.audio.currentTime : 0,
+        isPlaying: state.isPlaying,
+        updatedAt: Date.now()
+      });
+    }
+  }
+
+  // Periodic sync for host
+  setInterval(() => {
+    if (partyRoomRef && partyRoomId && !urlParamsHasRoom()) { 
+      sendSyncData();
+    }
+  }, 3000);
+
+  function urlParamsHasRoom() {
+    return new URLSearchParams(window.location.search).get('room');
+  }
 }
 
 

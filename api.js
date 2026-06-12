@@ -20,8 +20,8 @@ class AuraStreamAPI {
     this.pipedHost = null;
     this.fallbackPipedHosts = [
       'https://pipedapi.kavin.rocks',
-      'https://pipedapi.tokhmi.xyz',
-      'https://api.piped.yt'
+      'https://api.piped.yt',
+      'https://pipedapi.syncpundit.io'
     ];
     
     // Invidious fallback for when Piped is down
@@ -29,6 +29,9 @@ class AuraStreamAPI {
       'https://yt.chocolatemoo53.com',
       'https://inv.thepixora.com'
     ];
+    
+    // Circuit Breaker System
+    this.deadHosts = new Set();
   }
 
   /**
@@ -60,47 +63,41 @@ class AuraStreamAPI {
    * Resolves a working Piped YouTube API host.
    */
   async resolvePipedHost() {
-    if (this.pipedHost) return this.pipedHost;
+    if (this.pipedHost && !this.deadHosts.has(this.pipedHost)) return this.pipedHost;
 
-    // We can do a quick check on the primary host, if it fails, fallback
-    const primary = this.fallbackPipedHosts[0];
-    try {
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 2000); // 2s timeout
-      
-      const response = await fetch(`${primary}/search?q=music&filter=videos`, { signal: controller.signal });
-      clearTimeout(id);
-      
-      if (response.ok) {
-        this.pipedHost = primary;
-        console.log(`Resolved primary Piped host: ${this.pipedHost}`);
-        return this.pipedHost;
-      }
-    } catch (e) {
-      console.warn(`Piped primary host ${primary} failed, trying fallbacks...`);
+    // Filter out known dead hosts
+    const aliveHosts = this.fallbackPipedHosts.filter(h => !this.deadHosts.has(h));
+    
+    // If all hosts are marked dead, reset the circuit breaker and try again
+    if (aliveHosts.length === 0) {
+      console.warn('Circuit breaker triggered: All Piped hosts are dead. Resetting status.');
+      this.deadHosts.clear();
+      aliveHosts.push(...this.fallbackPipedHosts);
     }
 
-    // Try other fallbacks sequentially until one responds
-    for (let i = 1; i < this.fallbackPipedHosts.length; i++) {
-      const host = this.fallbackPipedHosts[i];
+    // Ping hosts sequentially until one responds
+    for (const host of aliveHosts) {
       try {
         const controller = new AbortController();
-        const id = setTimeout(() => controller.abort(), 1500);
+        const id = setTimeout(() => controller.abort(), 1500); // 1.5s fast timeout
         const response = await fetch(`${host}/search?q=test&filter=videos`, { signal: controller.signal });
         clearTimeout(id);
+        
         if (response.ok) {
           this.pipedHost = host;
           console.log(`Resolved Piped host: ${this.pipedHost}`);
           return this.pipedHost;
+        } else {
+          this.deadHosts.add(host);
         }
       } catch (err) {
-        console.warn(`Piped host ${host} not responding...`);
+        console.warn(`Piped host ${host} failed, blacklisting temporarily.`);
+        this.deadHosts.add(host);
       }
     }
 
-    // Default fallback
+    // Default fallback (we shouldn't reach here normally, but just in case)
     this.pipedHost = this.fallbackPipedHosts[Math.floor(Math.random() * this.fallbackPipedHosts.length)];
-    console.log(`Using default Piped host: ${this.pipedHost}`);
     return this.pipedHost;
   }
 
@@ -109,18 +106,32 @@ class AuraStreamAPI {
    */
   async getTrendingTracks() {
     try {
-      const host = await this.resolveAudiusHost();
-      const url = `${host}/v1/tracks/trending?app_name=${this.app_name}`;
+      // Fetch Top 100 to give a large pool for shuffling
+      const url = `https://itunes.apple.com/us/rss/topsongs/limit=100/json`;
       const response = await fetch(url);
       
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       
       const json = await response.json();
-      const tracks = json.data || [];
+      let entries = json.feed?.entry || [];
       
-      return tracks.map(t => this.normalizeAudiusTrack(t));
+      // Shuffle the array to make the "Refresh" button give different songs every time
+      entries = entries.sort(() => 0.5 - Math.random()).slice(0, 12);
+      
+      // Normalize iTunes RSS feed format to AuraStream Track object
+      return entries.map((entry, index) => ({
+        id: `itunes_trending_${index}_${Date.now()}`, // Temporary ID
+        title: entry['im:name']?.label || 'Unknown Title',
+        artist: entry['im:artist']?.label || 'Unknown Artist',
+        album: 'iTunes Top Songs',
+        coverUrl: entry['im:image'] ? entry['im:image'][entry['im:image'].length - 1]?.label : 'assets/album-default.svg',
+        streamUrl: entry.link && entry.link.length > 1 ? entry.link[1]?.attributes?.href : '',
+        duration: 30, // iTunes previews are usually 30 seconds
+        source: 'itunes',
+        playCount: 0
+      }));
     } catch (error) {
-      console.error('Error fetching trending tracks:', error);
+      console.error('Error fetching trending tracks from iTunes:', error);
       return [];
     }
   }
@@ -138,20 +149,18 @@ class AuraStreamAPI {
       this.searchYouTube(query)
     ]);
 
+    const yt = youtubeResults.status === 'fulfilled' ? youtubeResults.value : [];
+    const au = audiusResults.status === 'fulfilled' ? audiusResults.value : [];
+    const it = itunesResults.status === 'fulfilled' ? itunesResults.value : [];
+
     const results = [];
-
-    // Prioritize and label
-    if (youtubeResults.status === 'fulfilled') {
-      results.push(...youtubeResults.value);
-    }
-
-    if (audiusResults.status === 'fulfilled') {
-      results.push(...audiusResults.value);
-    }
+    const maxLen = Math.max(yt.length, au.length, it.length);
     
-    if (itunesResults.status === 'fulfilled') {
-      // Map iTunes tracks as both "iTunes" and simulated "Spotify Preview" elements for UX
-      results.push(...itunesResults.value);
+    // Interleave results for a better "tidy" visual mix in the UI
+    for (let i = 0; i < maxLen; i++) {
+      if (yt[i]) results.push(yt[i]);
+      if (au[i]) results.push(au[i]);
+      if (it[i]) results.push(it[i]);
     }
 
     return results;
@@ -172,12 +181,22 @@ class AuraStreamAPI {
       clearTimeout(id);
       if (response.ok) {
         return await response.json();
+      } else {
+        // Mark as dead if returns 500 etc.
+        this.deadHosts.add(host);
+        this.pipedHost = null; // force re-resolve next time
       }
     } catch (err) {
       console.warn(`Direct Piped fetch failed for ${targetUrl}, trying CORS proxies...`, err);
+      this.deadHosts.add(host);
+      this.pipedHost = null;
     }
 
-    // Try CORS proxies sequentially
+    // Try CORS proxies sequentially as fallback for the newly chosen host
+    // (If the host is down, proxies won't help, but if it's just CORS blocking, proxies help)
+    const newHost = await this.resolvePipedHost();
+    const newTargetUrl = `${newHost}${endpoint}`;
+
     const proxies = [
       (url) => `https://corsproxy.io/?${url}`,
       (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
@@ -185,7 +204,7 @@ class AuraStreamAPI {
 
     for (const getProxyUrl of proxies) {
       try {
-        const proxyUrl = getProxyUrl(targetUrl);
+        const proxyUrl = getProxyUrl(newTargetUrl);
         const controller = new AbortController();
         const id = setTimeout(() => controller.abort(), 2500);
         const response = await fetch(proxyUrl, { signal: controller.signal });
@@ -194,11 +213,11 @@ class AuraStreamAPI {
           return await response.json();
         }
       } catch (err) {
-        console.warn(`Piped fetch via proxy failed for ${targetUrl}:`, err);
+        console.warn(`Piped fetch via proxy failed for ${newTargetUrl}:`, err);
       }
     }
 
-    throw new Error(`Failed to fetch from Piped API at ${targetUrl}`);
+    throw new Error(`Failed to fetch from Piped API at ${newTargetUrl}`);
   }
 
   /**
@@ -207,19 +226,19 @@ class AuraStreamAPI {
   async searchYouTube(query) {
     // First, try Piped API
     try {
-      const endpoint = `/search?q=${encodeURIComponent(query)}&filter=all`;
+      const endpoint = `/search?q=${encodeURIComponent(query)}&filter=music_songs`;
       const json = await this.fetchPipedWithProxy(endpoint);
-      const items = json.streamItems || [];
+      const items = json.items || json.streamItems || [];
       
-      // Filter out only video types (which represent songs/clips)
+      // Filter out only stream/video types (which represent songs/clips)
       const pipedResults = items
-        .filter(item => item.type === 'video')
+        .filter(item => item.type === 'stream' || item.type === 'video')
         .slice(0, 15)
         .map(video => this.normalizeYouTubeTrack(video));
       
       if (pipedResults.length > 0) return pipedResults;
     } catch (error) {
-      console.warn('Piped API failed, trying Invidious for YouTube search:', error);
+      console.warn('Piped API search failed, trying Invidious fallback:', error.message || error);
     }
     
     // Fallback: try Invidious search API
@@ -250,11 +269,27 @@ class AuraStreamAPI {
           }
         }
       } catch (err) {
-        console.warn(`Invidious search failed on ${host}:`, err);
+        console.warn(`Invidious search failed on ${host}:`, err.message || err);
       }
     }
     
-    console.error('All YouTube search methods failed');
+    // Final fallback: try local backend search (yt-dlp powered)
+    try {
+      const response = await fetch(`http://localhost:8000/api/search/${encodeURIComponent(query)}`, {
+        signal: AbortSignal.timeout(8000)
+      });
+      if (response.ok) {
+        const results = await response.json();
+        if (Array.isArray(results) && results.length > 0) {
+          console.log('YouTube search succeeded via local backend');
+          return results;
+        }
+      }
+    } catch (err) {
+      // Backend not running — that's fine
+    }
+    
+    console.warn('All YouTube search methods exhausted');
     return [];
   }
 
@@ -296,6 +331,31 @@ class AuraStreamAPI {
     } catch (error) {
       console.error('Error searching iTunes:', error);
       return [];
+    }
+  }
+
+  /**
+   * Fetches lyrics from lyrics.ovh API.
+   */
+  async fetchLyrics(artist, title) {
+    if (!artist || !title) return null;
+    
+    const cleanTitle = title
+      .replace(/(\(|\[).*?(official|audio|video|feat|ft|lyric|live).*?(\)|\])/gi, '')
+      .replace(/official audio|official video/gi, '')
+      .trim();
+    
+    try {
+      const url = `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(cleanTitle)}`;
+      const response = await fetch(url);
+      
+      if (!response.ok) return null;
+      
+      const json = await response.json();
+      return json.lyrics || null;
+    } catch (error) {
+      console.warn('Lyrics fetch failed:', error);
+      return null;
     }
   }
 
@@ -369,6 +429,30 @@ class AuraStreamAPI {
       duration: video.duration || 0,
       source: 'youtube'
     };
+  }
+
+  // --- LRCLIB (Synced Lyrics) API ---
+  async fetchSyncedLyrics(artist, title) {
+    if (!artist || !title) return null;
+    try {
+      const cleanArtist = artist.replace(/(\(.*?\)|\[.*?\])/g, '').trim();
+      const cleanTitle = title.replace(/(\(.*?\)|\[.*?\]|official|video|audio|lyric)/gi, '').trim();
+      
+      const queryUrl = `https://lrclib.net/api/get?artist_name=${encodeURIComponent(cleanArtist)}&track_name=${encodeURIComponent(cleanTitle)}`;
+      const response = await fetch(queryUrl);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && data.syncedLyrics) {
+          return { synced: true, text: data.syncedLyrics };
+        } else if (data && data.plainLyrics) {
+          return { synced: false, text: data.plainLyrics };
+        }
+      }
+      return null;
+    } catch (err) {
+      console.warn('LRCLIB API failed:', err);
+      return null;
+    }
   }
 }
 

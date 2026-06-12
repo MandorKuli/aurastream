@@ -4,11 +4,13 @@
  */
 
 const DB_NAME = 'AuraStreamDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 class AuraStreamDB {
   constructor() {
     this.db = null;
+    this.currentUser = null;
+    this.cloudSyncEnabled = false;
   }
 
   /**
@@ -54,6 +56,11 @@ class AuraStreamDB {
         if (!db.objectStoreNames.contains('settings')) {
           db.createObjectStore('settings', { keyPath: 'key' });
         }
+
+        // Stats store: tracks listen history and play counts for Aura Wrapped
+        if (!db.objectStoreNames.contains('stats')) {
+          db.createObjectStore('stats', { keyPath: 'id' });
+        }
       };
     });
   }
@@ -67,16 +74,135 @@ class AuraStreamDB {
     return transaction.objectStore(storeName);
   }
 
+  // --- CLOUD AUTH & SYNC (FIREBASE) ---
+  
+  async login(email, password) {
+    if (typeof firebase === 'undefined') {
+      console.warn("Firebase SDK not loaded");
+      return null;
+    }
+    try {
+      const userCredential = await firebase.auth().signInWithEmailAndPassword(email, password);
+      const user = userCredential.user;
+      this.currentUser = { id: user.uid, email: user.email, name: user.email.split('@')[0] };
+      this.cloudSyncEnabled = true;
+      await this.saveSetting('currentUser', this.currentUser);
+      return this.currentUser;
+    } catch (error) {
+      console.error("Firebase Login Error:", error);
+      throw error;
+    }
+  }
+
+  async register(email, password) {
+    if (typeof firebase === 'undefined') {
+      console.warn("Firebase SDK not loaded");
+      return null;
+    }
+    try {
+      const userCredential = await firebase.auth().createUserWithEmailAndPassword(email, password);
+      const user = userCredential.user;
+      this.currentUser = { id: user.uid, email: user.email, name: user.email.split('@')[0] };
+      this.cloudSyncEnabled = true;
+      await this.saveSetting('currentUser', this.currentUser);
+      return this.currentUser;
+    } catch (error) {
+      console.error("Firebase Register Error:", error);
+      throw error;
+    }
+  }
+
+  async logout() {
+    if (typeof firebase !== 'undefined') {
+      await firebase.auth().signOut();
+    }
+    this.currentUser = null;
+    this.cloudSyncEnabled = false;
+    await this.saveSetting('currentUser', null);
+    return true;
+  }
+
+  async syncToCloud() {
+    if (!this.cloudSyncEnabled || !this.currentUser || typeof firebase === 'undefined') return false;
+    
+    console.log('Syncing data to Firebase Firestore for user:', this.currentUser.id);
+    const data = await this.exportData();
+    
+    try {
+      const db = firebase.firestore();
+      // Store user's exported data blob in firestore
+      // In a real production app, we'd sync individual playlists and favorites separately to avoid 1MB document limits,
+      // but for this MVP, we stringify the local export.
+      await db.collection('users').doc(this.currentUser.id).set({
+        syncData: data,
+        lastSynced: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      console.log('Firebase Cloud sync complete!');
+      return true;
+    } catch (error) {
+      console.error("Firebase Sync Error:", error);
+      return false;
+    }
+  }
+
+  async loadUserSession() {
+    if (typeof firebase !== 'undefined') {
+      // Use Firebase observer
+      firebase.auth().onAuthStateChanged((user) => {
+        if (user) {
+          this.currentUser = { id: user.uid, email: user.email, name: user.email.split('@')[0] };
+          this.cloudSyncEnabled = true;
+          this.saveSetting('currentUser', this.currentUser);
+        } else {
+          this.currentUser = null;
+          this.cloudSyncEnabled = false;
+          this.saveSetting('currentUser', null);
+        }
+      });
+    }
+
+    const user = await this.getSetting('currentUser');
+    if (user) {
+      this.currentUser = user;
+      this.cloudSyncEnabled = true;
+      return user;
+    }
+    return null;
+  }
+
   // --- LOCAL TRACKS METHODS ---
 
   /**
    * Saves a locally uploaded track metadata and its binary audio blob.
    */
   async saveLocalTrack(track) {
+    let hasOpfs = false;
+    try {
+      // Attempt OPFS write if supported
+      if (navigator.storage && navigator.storage.getDirectory) {
+        const rootDir = await navigator.storage.getDirectory();
+        const fileHandle = await rootDir.getFileHandle(`${track.id}.mp3`, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(track.audioBlob);
+        await writable.close();
+        hasOpfs = true;
+        console.log(`[OPFS] Saved track ${track.id}.mp3`);
+      }
+    } catch (err) {
+      console.warn('[OPFS] Failed to save, falling back to IndexedDB:', err);
+    }
+
+    // If OPFS succeeds, we don't need to store the heavy blob in IndexedDB
+    const dbTrack = { ...track };
+    if (hasOpfs) {
+      dbTrack.audioBlob = null; 
+      dbTrack.storedInOPFS = true;
+    }
+
     const store = await this.getStore('tracks', 'readwrite');
     return new Promise((resolve, reject) => {
-      const request = store.put(track);
-      request.onsuccess = () => resolve(track);
+      const request = store.put(dbTrack);
+      request.onsuccess = () => resolve(track); // return original track to caller
       request.onerror = (e) => reject(e.target.error);
     });
   }
@@ -115,11 +241,26 @@ class AuraStreamDB {
     const store = await this.getStore('tracks', 'readonly');
     return new Promise((resolve, reject) => {
       const request = store.get(id);
-      request.onsuccess = () => {
-        if (request.result && request.result.audioBlob) {
+      request.onsuccess = async () => {
+        if (!request.result) {
+          return reject(new Error('Audio track not found'));
+        }
+        
+        if (request.result.storedInOPFS && navigator.storage && navigator.storage.getDirectory) {
+          try {
+            const rootDir = await navigator.storage.getDirectory();
+            const fileHandle = await rootDir.getFileHandle(`${id}.mp3`, { create: false });
+            const file = await fileHandle.getFile();
+            return resolve(file);
+          } catch (err) {
+            console.warn(`[OPFS] Failed to read ${id}.mp3, trying IndexedDB blob fallback`, err);
+          }
+        }
+        
+        if (request.result.audioBlob) {
           resolve(request.result.audioBlob);
         } else {
-          reject(new Error('Audio track not found or contains no audio file'));
+          reject(new Error('Audio track contains no audio file'));
         }
       };
       request.onerror = (e) => reject(e.target.error);
@@ -330,6 +471,53 @@ class AuraStreamDB {
     });
   }
 
+  // --- BACKUP & RESTORE METHODS ---
+
+  /**
+   * Exports all non-binary data to a JSON string.
+   */
+  async exportData() {
+    const playlists = await this.getPlaylists();
+    const favorites = await this.getFavorites();
+    const localTracks = await this.getLocalTracks(); // Excludes audioBlobs in this implementation
+    
+    return JSON.stringify({
+      version: 1,
+      timestamp: Date.now(),
+      playlists,
+      favorites,
+      localTracks
+    });
+  }
+
+  /**
+   * Imports data from a JSON string.
+   */
+  async importData(jsonData) {
+    try {
+      const data = JSON.parse(jsonData);
+      if (!data.version) throw new Error('Invalid backup format');
+      
+      // Import Playlists
+      if (data.playlists) {
+        const pStore = await this.getStore('playlists', 'readwrite');
+        data.playlists.forEach(p => pStore.put(p));
+      }
+      
+      // Import Favorites
+      if (data.favorites) {
+        const fStore = await this.getStore('favorites', 'readwrite');
+        data.favorites.forEach(f => fStore.put(f));
+      }
+      
+      // We skip localTracks since the binary audio blobs cannot be easily exported/imported via simple JSON.
+      return true;
+    } catch (err) {
+      console.error('Import failed:', err);
+      throw err;
+    }
+  }
+
   // --- SETTINGS METHODS ---
 
   /**
@@ -361,7 +549,62 @@ class AuraStreamDB {
       request.onerror = (e) => reject(e.target.error);
     });
   }
+  // --- LISTENING STATS METHODS (Aura Wrapped) ---
+
+  /**
+   * Logs a track play to build statistics.
+   */
+  async logTrackPlay(track) {
+    if (!track || !track.id) return;
+
+    try {
+      const store = await this.getStore('stats', 'readwrite');
+      const request = store.get(track.id);
+
+      request.onsuccess = () => {
+        let statItem = request.result;
+        if (!statItem) {
+          statItem = {
+            id: track.id,
+            title: track.title,
+            artist: track.artist,
+            coverUrl: track.coverUrl,
+            playCount: 1,
+            lastPlayed: Date.now()
+          };
+        } else {
+          statItem.playCount += 1;
+          statItem.lastPlayed = Date.now();
+        }
+        store.put(statItem);
+      };
+    } catch (err) {
+      console.error('Failed to log track play:', err);
+    }
+  }
+
+  /**
+   * Retrieves all listening statistics.
+   */
+  async getTopTracks() {
+    try {
+      const store = await this.getStore('stats', 'readonly');
+      return new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => {
+          const sorted = request.result.sort((a, b) => b.playCount - a.playCount);
+          resolve(sorted);
+        };
+        request.onerror = (e) => reject(e.target.error);
+      });
+    } catch (err) {
+      return [];
+    }
+  }
 }
 
 // Export database instance
 export const db = new AuraStreamDB();
+
+// Initialize session
+db.loadUserSession();
