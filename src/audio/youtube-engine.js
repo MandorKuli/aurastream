@@ -236,6 +236,22 @@ export async function resolveInvidiousHost() {
 }
 
 export async function getInvidiousAudioUrl(videoId) {
+  try {
+    const pipedUrl = `https://pipedapi.kavin.rocks/streams/${videoId}`;
+    const response = await fetch(pipedUrl);
+    if (response.ok) {
+      const data = await response.json();
+      const audioStreams = data.audioStreams || [];
+      if (audioStreams.length > 0) {
+        // Find best audio stream (usually the first one is fine, or highest bitrate)
+        return audioStreams[0].url;
+      }
+    }
+  } catch (err) {
+    console.warn("Public Piped API failed to stream, falling back to local backend", err);
+  }
+
+  // Fallback to local python backend if public API fails
   const backendBase = window.AURA_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:8000' : `http://${window.location.hostname}:8000`);
   return `${backendBase}/api/stream/${videoId}`;
 }

@@ -162,18 +162,8 @@ async function playTrack(track, contextQueue = null) {
         }
         
         if (videoId) {
-          // Check if backend is reachable
-          let backendAlive = false;
-          try {
-            const backendBase = window.AURA_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:8000' : `http://${window.location.hostname}:8000`);
-            const probe = await fetch(`${backendBase}/api/health`, {
-              method: 'GET',
-              signal: AbortSignal.timeout(3000)
-            });
-            backendAlive = probe.ok;
-          } catch (_) {
-            backendAlive = false;
-          }
+          // Check if backend is reachable (now bypassed since we use public Piped API)
+          let backendAlive = true;
 
           if (backendAlive) {
             // 🎵 Stream audio via backend proxy — pure HTML5 <audio>, no iframe!
