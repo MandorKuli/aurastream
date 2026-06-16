@@ -137,10 +137,11 @@ async function playTrack(track, contextQueue = null) {
 
     db.logTrackPlay(track);
 
-    // 2. Full Song Playback via Audio Proxy (iTunes & YouTube)
+    // 2. Full Song Playback via Native YouTube IFrame (Invisible)
+    // Avoids ALL CORS and IP block issues by streaming natively.
     if (track.source === 'itunes' || track.source === 'youtube') {
-      state.activePlayerEngine = 'html5';
-      DOM.floatingVideoPlayer.classList.remove('active');
+      state.activePlayerEngine = 'youtube';
+      DOM.floatingVideoPlayer.classList.remove('active'); // KEEP IT HIDDEN
       
       state.audio.pause();
       stopYouTubeVideo();
@@ -153,79 +154,46 @@ async function playTrack(track, contextQueue = null) {
         if (track.source === 'youtube') {
           videoId = track.streamUrl;
         } else {
-          showToast(`Finding full track for "${track.title}"...`, 'info');
+          showToast(`Finding track...`, 'info');
           videoId = await resolveYouTubeVideoId(track.artist, track.title);
         }
         
         if (videoId) {
-          const streamUrl = await getInvidiousAudioUrl(videoId);
-          state.audio.src = streamUrl;
-          state.audio.load();
-          
-          let streamTimeout = setTimeout(() => {
-            if (state.currentTrack && state.currentTrack.id === track.id && 
-                (state.audio.paused || state.audio.readyState < 2)) {
-              console.warn('Backend stream timeout');
-              if (track.source === 'itunes' && track.streamUrl) {
-                showToast('Stream timeout. Playing 30-sec preview.', 'warning');
-                state.audio.src = track.streamUrl;
-                state.audio.load();
-                state.audio.play().catch(e => console.warn(e));
-              } else {
-                showToast('Stream timeout. Please check your connection.', 'error');
-              }
-            }
-          }, 10000);
-          
-          state.audio.play().then(() => {
-            clearTimeout(streamTimeout);
-            showToast('🎵 Streaming full song', 'success');
-          }).catch(e => {
-            clearTimeout(streamTimeout);
-            console.warn('Stream play failed:', e);
-            if (track.source === 'itunes' && track.streamUrl) {
-              showToast('Stream failed. Playing 30-sec preview.', 'warning');
-              state.audio.src = track.streamUrl;
-              state.audio.load();
-              state.audio.play().catch(err => console.warn(err));
-            } else {
-              showToast('Playback failed. Please try another track.', 'error');
-            }
-          });
-          state.audio.volume = state.volume;
+          showToast('🎵 Streaming securely via YouTube', 'success');
+          playYouTubeVideo(videoId);
+          state.isPlaying = true;
+          updatePlayerBarUI();
+          updatePlaybackControlsUI();
           initWebAudioContext();
-
+          return;
         } else {
+          // Fallback to iTunes preview
           if (track.source === 'itunes' && track.streamUrl) {
             showToast('Could not find full track. Playing 30-sec preview.', 'warning');
+            state.activePlayerEngine = 'html5';
             state.audio.src = track.streamUrl;
             state.audio.load();
             state.audio.play().catch(e => console.warn(e));
             state.audio.volume = state.volume;
+            state.isPlaying = true;
+            updatePlayerBarUI();
+            updatePlaybackControlsUI();
             initWebAudioContext();
+            return;
           } else {
-            showToast('Could not resolve video. Please try another track.', 'error');
+            showToast('Could not resolve track.', 'error');
           }
         }
       } catch (err) {
-        console.error('Full playback resolution failed:', err);
-        if (track.source === 'itunes' && track.streamUrl) {
-          showToast('Playback error. Playing 30-sec preview.', 'warning');
-          state.audio.src = track.streamUrl;
-          state.audio.load();
-          state.audio.play().catch(e => console.warn(e));
-          state.audio.volume = state.volume;
-          initWebAudioContext();
-        } else {
-          showToast('Playback failed.', 'error');
-        }
+        console.error('Playback resolution failed:', err);
+        showToast('Playback failed.', 'error');
       }
-
-      state.isPlaying = true;
-      updatePlayerBarUI();
+      
+      state.isPlaying = false;
       updatePlaybackControlsUI();
       return;
     }
+
 
     state.currentTrack = track;
 
@@ -305,9 +273,9 @@ async function pauseTrack() {
     await fadeAudioVolume(0, 400);
     state.audio.pause();
   } else if (state.activePlayerEngine === 'youtube') {
-    // For iframe-based YouTube, stop video by clearing src
-    stopYouTubeVideo();
-    DOM.floatingVideoPlayer.classList.remove('active');
+    if (state.ytPlayerReady && typeof state.ytPlayer.pauseVideo === 'function') {
+      state.ytPlayer.pauseVideo();
+    }
   } else if (state.activePlayerEngine === 'soundcloud' && state.scWidgetReady) {
     state.scWidget.pause();
   }
@@ -331,10 +299,8 @@ async function resumeTrack() {
     state.audio.play().catch(e => console.warn(e));
     fadeAudioVolume(state.volume, 400);
   } else if (state.activePlayerEngine === 'youtube') {
-    // For iframe YouTube, re-play the current track
-    if (state.currentTrack) {
-      DOM.floatingVideoPlayer.classList.add('active');
-      playYouTubeVideo(state.currentTrack.streamUrl);
+    if (state.ytPlayerReady && typeof state.ytPlayer.playVideo === 'function') {
+      state.ytPlayer.playVideo();
     }
   } else if (state.activePlayerEngine === 'soundcloud' && state.scWidgetReady) {
     state.scWidget.play();
@@ -2496,6 +2462,11 @@ async function bootstrap() {
     if (state.activeView === 'favorites') loadFavoritesList();
     if (state.activeView === 'playlists') loadPlaylistsGrid();
     showToast('Data Synced with Cloud!', 'success');
+  });
+
+  // YouTube IFrame API native ended event listener
+  document.addEventListener('youtube-track-ended', () => {
+    handleTrackEnded();
   });
 
   try {

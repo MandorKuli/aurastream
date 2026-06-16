@@ -1,46 +1,82 @@
 import { state } from '../core/state.js';
 
-/**
- * Loads a YouTube video using direct iframe src (no JS API needed).
- * This is more reliable than the YT.Player JS API.
- */
+let ytPlayerInstance = null;
+let ytPlayerReadyPromise = null;
+
 export function loadYouTubeIframe() {
-  // Create the iframe element inside the container
-  const container = document.getElementById('youtube-player-container');
-  if (!container) return;
+  if (ytPlayerReadyPromise) return ytPlayerReadyPromise;
 
-  const iframe = document.createElement('iframe');
-  iframe.id = 'yt-iframe';
-  iframe.style.cssText = 'width:100%;height:100%;border:none;';
-  iframe.allow = 'autoplay; encrypted-media';
-  iframe.allowFullscreen = true;
-  iframe.src = 'about:blank';
-  container.appendChild(iframe);
-  
-  state.ytPlayer = iframe; // Store reference to iframe element
-  state.ytPlayerReady = true; // Always ready since it's just an iframe
-  console.log('YouTube iframe player ready');
+  ytPlayerReadyPromise = new Promise((resolve) => {
+    // Inject the YouTube IFrame API script if it doesn't exist
+    if (!document.getElementById('youtube-iframe-api')) {
+      const tag = document.createElement('script');
+      tag.id = 'youtube-iframe-api';
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    }
+
+    // Define the global callback for the YouTube API
+    window.onYouTubeIframeAPIReady = () => {
+      ytPlayerInstance = new YT.Player('youtube-player-container', {
+        height: '100%',
+        width: '100%',
+        videoId: '',
+        playerVars: {
+          'playsinline': 1,
+          'autoplay': 1,
+          'controls': 0,
+          'disablekb': 1,
+          'fs': 0,
+          'modestbranding': 1,
+          'rel': 0
+        },
+        events: {
+          'onReady': onPlayerReady,
+          'onStateChange': onPlayerStateChange,
+          'onError': onPlayerError
+        }
+      });
+    };
+
+    function onPlayerReady(event) {
+      state.ytPlayer = ytPlayerInstance;
+      state.ytPlayerReady = true;
+      console.log('YouTube JS API player ready');
+      resolve(ytPlayerInstance);
+    }
+    
+    function onPlayerStateChange(event) {
+      if (event.data === YT.PlayerState.PLAYING) {
+        state.isPlaying = true;
+      } else if (event.data === YT.PlayerState.PAUSED) {
+        state.isPlaying = false;
+      } else if (event.data === YT.PlayerState.ENDED) {
+        // Trigger global track ended event so app.js can catch it
+        document.dispatchEvent(new Event('youtube-track-ended'));
+      }
+    }
+    
+    function onPlayerError(event) {
+      console.error("YouTube Player Error:", event.data);
+    }
+  });
+
+  return ytPlayerReadyPromise;
 }
 
-/**
- * Plays a YouTube video by updating the iframe src directly.
- * @param {string} videoId - YouTube video ID
- */
-export function playYouTubeVideo(videoId) {
-  const iframe = document.getElementById('yt-iframe');
-  if (!iframe) return;
-  // Use embed URL with autoplay and no related videos
-  iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&iv_load_policy=3`;
-  state.ytPlayerReady = true;
+export async function playYouTubeVideo(videoId) {
+  if (!state.ytPlayerReady) {
+    await loadYouTubeIframe();
+  }
+  if (ytPlayerInstance && typeof ytPlayerInstance.loadVideoById === 'function') {
+    ytPlayerInstance.loadVideoById(videoId);
+  }
 }
 
-/**
- * Stops YouTube iframe playback by clearing its src.
- */
 export function stopYouTubeVideo() {
-  const iframe = document.getElementById('yt-iframe');
-  if (iframe) {
-    iframe.src = 'about:blank';
+  if (ytPlayerInstance && typeof ytPlayerInstance.stopVideo === 'function') {
+    ytPlayerInstance.stopVideo();
   }
 }
 
