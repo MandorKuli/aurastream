@@ -275,7 +275,7 @@ class AuraStreamAPI {
     
     // Final fallback: try local backend search (yt-dlp powered)
     try {
-      const backendBase = window.AURA_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:8000' : `http://${window.location.hostname}:8000`);
+      const backendBase = window.AURA_BACKEND_URL || 'https://mieer-aurastream-backend.hf.space';
       const response = await fetch(`${backendBase}/api/search/${encodeURIComponent(query)}`, {
         signal: AbortSignal.timeout(8000)
       });

@@ -259,6 +259,6 @@ export async function getInvidiousAudioUrl(videoId) {
   }
 
   // Fallback to local python backend if public APIs all fail
-  const backendBase = window.AURA_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:8000' : `http://${window.location.hostname}:8000`);
+  const backendBase = window.AURA_BACKEND_URL || 'https://mieer-aurastream-backend.hf.space';
   return `${backendBase}/api/stream/${videoId}`;
 }
