@@ -236,6 +236,33 @@ export async function resolveInvidiousHost() {
 }
 
 export async function getInvidiousAudioUrl(videoId) {
+  // 1. Try Cobalt API (Highly reliable, IP unblocked, native browser fetch)
+  try {
+    const cobaltResponse = await fetch("https://api.cobalt.tools/api/json", {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        isAudioOnly: true,
+        aFormat: "best"
+      }),
+      signal: AbortSignal.timeout(5000)
+    });
+    
+    if (cobaltResponse.ok) {
+      const data = await cobaltResponse.json();
+      if (data && data.url) {
+        return data.url;
+      }
+    }
+  } catch (err) {
+    console.warn("Cobalt API failed:", err);
+  }
+
+  // 2. Try Piped APIs (often blocked but worth a shot)
   const hosts = [
     'https://pipedapi.kavin.rocks',
     'https://pipedapi.tokhmi.xyz',
@@ -244,21 +271,22 @@ export async function getInvidiousAudioUrl(videoId) {
   
   for (const host of hosts) {
     try {
-      const pipedUrl = `${host}/streams/${videoId}`;
-      const response = await fetch(pipedUrl, { signal: AbortSignal.timeout(3000) });
+      const response = await fetch(`${host}/streams/${videoId}`, {
+        signal: AbortSignal.timeout(4000)
+      });
       if (response.ok) {
         const data = await response.json();
-        const audioStreams = data.audioStreams || [];
-        if (audioStreams.length > 0) {
-          return audioStreams[0].url;
+        const audioStream = data.audioStreams?.find(s => s.mimeType?.includes('mp4') || s.mimeType?.includes('webm'));
+        if (audioStream && audioStream.url) {
+          return audioStream.url;
         }
       }
     } catch (err) {
-      console.warn(`Public Piped API failed on ${host}, trying next...`);
+      console.warn(`Piped API ${host} failed`, err);
     }
   }
 
-  // Fallback to local python backend if public APIs all fail
+  // 3. Fallback to local python backend if public APIs all fail
   const backendBase = window.AURA_BACKEND_URL || 'https://mieer-aurastream-backend.hf.space';
   return `${backendBase}/api/stream/${videoId}`;
 }
