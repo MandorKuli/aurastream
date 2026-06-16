@@ -2476,6 +2476,8 @@ async function bootstrap() {
     const savedBackend = await db.getSetting('backendUrl');
     if (savedBackend) {
       window.AURA_BACKEND_URL = savedBackend;
+    } else {
+      window.AURA_BACKEND_URL = 'https://mieer-aurastream-backend.hf.space';
     }
 
     loadLocalTracksHome();
