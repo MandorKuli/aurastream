@@ -135,16 +135,13 @@ async function playTrack(track, contextQueue = null) {
       }
     }
 
-    // Log the play for Aura Wrapped (Listening Stats)
     db.logTrackPlay(track);
 
     // 2. Full Song Playback via Audio Proxy (iTunes & YouTube)
-    // Uses Piped API to extract and proxy audio — NO mini player needed!
     if (track.source === 'itunes' || track.source === 'youtube') {
       state.activePlayerEngine = 'html5';
       DOM.floatingVideoPlayer.classList.remove('active');
       
-      // Stop other engines immediately
       state.audio.pause();
       stopYouTubeVideo();
       if (state.scWidgetReady) state.scWidget.pause();
@@ -152,7 +149,6 @@ async function playTrack(track, contextQueue = null) {
       state.currentTrack = track;
       
       try {
-        // Get video ID
         let videoId;
         if (track.source === 'youtube') {
           videoId = track.streamUrl;
@@ -162,67 +158,44 @@ async function playTrack(track, contextQueue = null) {
         }
         
         if (videoId) {
-          // Check if backend is reachable (now bypassed since we use public Piped API)
-          let backendAlive = true;
-
-            // 🎵 Stream audio directly using Piped API — pure HTML5 <audio>, no iframe!
-            const streamUrl = await getInvidiousAudioUrl(videoId);
-            state.audio.src = streamUrl;
-            state.audio.load();
-            
-            // Timeout: if audio doesn't start within 10s, show error
-            let streamTimeout = setTimeout(() => {
-              if (state.currentTrack && state.currentTrack.id === track.id && 
-                  (state.audio.paused || state.audio.readyState < 2)) {
-                console.warn('Backend stream timeout');
-                // Fall back to preview for iTunes, or show error for YouTube
-                if (track.source === 'itunes' && track.streamUrl) {
-                  showToast('Stream timeout. Playing 30-sec preview.', 'warning');
-                  state.audio.src = track.streamUrl;
-                  state.audio.load();
-                  state.audio.play().catch(e => console.warn(e));
-                } else {
-                  showToast('Stream timeout. Please check backend server.', 'error');
-                }
-              }
-            }, 10000);
-            
-            state.audio.play().then(() => {
-              clearTimeout(streamTimeout);
-              showToast('🎵 Streaming full song (no mini player!)', 'success');
-            }).catch(e => {
-              clearTimeout(streamTimeout);
-              console.warn('Backend stream play failed:', e);
+          const streamUrl = await getInvidiousAudioUrl(videoId);
+          state.audio.src = streamUrl;
+          state.audio.load();
+          
+          let streamTimeout = setTimeout(() => {
+            if (state.currentTrack && state.currentTrack.id === track.id && 
+                (state.audio.paused || state.audio.readyState < 2)) {
+              console.warn('Backend stream timeout');
               if (track.source === 'itunes' && track.streamUrl) {
-                showToast('Stream failed. Playing 30-sec preview.', 'warning');
+                showToast('Stream timeout. Playing 30-sec preview.', 'warning');
                 state.audio.src = track.streamUrl;
                 state.audio.load();
-                state.audio.play().catch(err => console.warn(err));
+                state.audio.play().catch(e => console.warn(e));
               } else {
-                showToast('Playback failed. Please try another track.', 'error');
+                showToast('Stream timeout. Please check your connection.', 'error');
               }
-            });
-            state.audio.volume = state.volume;
-            initWebAudioContext();
-          } else {
-            // Backend is down — fall back gracefully
+            }
+          }, 10000);
+          
+          state.audio.play().then(() => {
+            clearTimeout(streamTimeout);
+            showToast('🎵 Streaming full song', 'success');
+          }).catch(e => {
+            clearTimeout(streamTimeout);
+            console.warn('Stream play failed:', e);
             if (track.source === 'itunes' && track.streamUrl) {
-              showToast('Backend offline. Playing 30-sec preview.', 'warning');
+              showToast('Stream failed. Playing 30-sec preview.', 'warning');
               state.audio.src = track.streamUrl;
               state.audio.load();
-              state.audio.play().catch(e => console.warn(e));
-              state.audio.volume = state.volume;
-              initWebAudioContext();
+              state.audio.play().catch(err => console.warn(err));
             } else {
-              // YouTube tracks: last resort = iframe (but warn user)
-              showToast('Backend offline. Start the Python server for full audio!', 'warning');
-              state.activePlayerEngine = 'youtube';
-              DOM.floatingVideoPlayer.classList.add('active');
-              playYouTubeVideo(videoId);
+              showToast('Playback failed. Please try another track.', 'error');
             }
-          }
+          });
+          state.audio.volume = state.volume;
+          initWebAudioContext();
+
         } else {
-          // Could not find video ID — play 30s iTunes preview if available
           if (track.source === 'itunes' && track.streamUrl) {
             showToast('Could not find full track. Playing 30-sec preview.', 'warning');
             state.audio.src = track.streamUrl;
@@ -261,20 +234,11 @@ async function playTrack(track, contextQueue = null) {
       await fadeAudioVolume(0, 400); // Crossfade out
     }
     state.audio.pause();
-    stopYouTubeVideo(); // Stop iframe-based YouTube player
+    stopYouTubeVideo(); 
     if (state.scWidgetReady) state.scWidget.pause();
 
-    // 4. Divert to Brand Player Engine (only for non-full-song mode)
-    if (track.source === 'youtube') {
-      // When forceFullSongs is OFF, use iframe as before
-      state.activePlayerEngine = 'youtube';
-      DOM.floatingVideoPlayer.classList.add('active');
-
-      const videoId = track.streamUrl;
-      showToast(`Streaming "${track.title}" from YouTube Music`, 'success');
-      playYouTubeVideo(videoId);
-
-    } else if (track.source === 'soundcloud') {
+    // 4. Divert to Brand Player Engine
+    if (track.source === 'soundcloud') {
       state.activePlayerEngine = 'soundcloud';
       DOM.floatingVideoPlayer.classList.remove('active');
       
@@ -296,16 +260,13 @@ async function playTrack(track, contextQueue = null) {
       }
 
       if (track.source === 'local') {
-        // Fetch binary data from indexedDB or OPFS
         const audioData = await db.getLocalTrackAudio(track.id);
         
-        // Cleanup previous local blob URL to prevent memory leak
         if (state.currentBlobUrl) {
           URL.revokeObjectURL(state.currentBlobUrl);
           state.currentBlobUrl = null;
         }
 
-        // Check if audioData is a File (OPFS) or Blob (IndexedDB)
         if (audioData instanceof File || audioData instanceof Blob) {
           audioSrc = URL.createObjectURL(audioData);
           state.currentBlobUrl = audioSrc;
