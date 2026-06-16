@@ -2,10 +2,10 @@ const CACHE_NAME = 'aurastream-cache-v12';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
-  './style.css',
-  './app.js',
-  './db.js',
-  './api.js',
+  './css/style.css',
+  './src/core/app.js',
+  './src/core/db.js',
+  './src/core/api.js',
   './manifest.json',
   'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css',
   'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap'

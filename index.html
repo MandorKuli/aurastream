@@ -5,6 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>AuraStream - Next Gen Music</title>
 
+  <script>
+    window.onerror = function(message, source, lineno, colno, error) {
+      document.body.innerHTML += '<div style="position:fixed;top:0;left:0;z-index:9999;background:red;color:white;padding:10px;">Error: ' + message + ' at ' + source + ':' + lineno + '</div>';
+    };
+    window.addEventListener("unhandledrejection", function(event) {
+      document.body.innerHTML += '<div style="position:fixed;top:40px;left:0;z-index:9999;background:red;color:white;padding:10px;">Unhandled Rejection: ' + event.reason + '</div>';
+    });
+  </script>
+
   <!-- PWA Manifest -->
   <link rel="icon" href="assets/icon-192.svg" type="image/svg+xml">
   <link rel="manifest" href="manifest.json">
@@ -36,7 +45,7 @@
 
   <!-- Google Fonts & FontAwesome CDN -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <!-- ===================== IMMERSIVE BG ===================== -->
@@ -687,6 +696,15 @@
         </div>
         <p style="color: var(--text-muted); font-size: 0.8rem; line-height: 1.4;">If enabled, AuraStream will attempt to find full versions of songs on YouTube. Disable to play instant 30-sec previews (saves data and loads instantly).</p>
       </div>
+
+      <div style="margin-top: 24px; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 12px; border: 1px solid var(--border-glass);">
+        <h4 style="color: var(--text-secondary); margin-bottom: 8px; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em;">Backend Server</h4>
+        <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 12px; line-height: 1.4;">Custom URL for the Python yt-dlp backend. Leave empty to auto-detect.</p>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="settings-backend-url" placeholder="e.g. http://192.168.1.5:8000" style="flex: 1; padding: 10px; border-radius: 8px; background: rgba(0,0,0,0.3); border: 1px solid var(--border-glass); color: white; font-size: 0.9rem;">
+          <button class="modal-btn confirm" id="settings-backend-save" style="padding: 0 16px;">Save</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -787,12 +805,12 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-  <script src="firebase-config.js"></script>
+  <script src="src/config/firebase-config.js"></script>
 
   <!-- Script SDKs -->
   <script src="https://w.soundcloud.com/player/api.js"></script>
 
   <!-- Application Logic Modules -->
-  <script type="module" src="app.js"></script>
+  <script type="module" src="src/core/app.js"></script>
 </body>
 </html>

@@ -43,14 +43,20 @@ async def get_audio_stream(video_id: str):
     """
     import time
     
+    # Cleanup expired cache entries periodically
+    current_time = time.time()
+    expired_keys = [k for k, v in _url_cache.items() if v.get('expires', 0) < current_time]
+    for k in expired_keys:
+        del _url_cache[k]
+
     # Check cache first
     cached = _url_cache.get(video_id)
-    if cached and cached.get('expires', 0) > time.time():
+    if cached and cached.get('expires', 0) > current_time:
         audio_url = cached['url']
         content_type = cached.get('content_type', 'audio/webm')
     else:
         ydl_opts = {
-            'format': 'bestaudio[ext=webm]/bestaudio/best',
+            'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best',
             'noplaylist': True,
             'quiet': True,
             'no_warnings': True,
@@ -96,11 +102,16 @@ async def get_audio_stream(video_id: str):
     
     async def audio_stream_generator():
         """Proxies the remote audio through our server in chunks."""
-        async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
-            async with client.stream("GET", audio_url) as response:
-                async for chunk in response.aiter_bytes(chunk_size=65536):
-                    yield chunk
-    
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
+                async with client.stream("GET", audio_url) as response:
+                    async for chunk in response.aiter_bytes(chunk_size=65536):
+                        yield chunk
+        except Exception as e:
+            print(f"Stream interrupted or failed: {e}")
+        finally:
+            pass # httpx contexts manage cleanup automatically
+            
     return StreamingResponse(
         audio_stream_generator(),
         media_type=content_type,

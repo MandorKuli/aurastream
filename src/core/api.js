@@ -275,7 +275,8 @@ class AuraStreamAPI {
     
     // Final fallback: try local backend search (yt-dlp powered)
     try {
-      const response = await fetch(`http://localhost:8000/api/search/${encodeURIComponent(query)}`, {
+      const backendBase = window.AURA_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:8000' : `http://${window.location.hostname}:8000`);
+      const response = await fetch(`${backendBase}/api/search/${encodeURIComponent(query)}`, {
         signal: AbortSignal.timeout(8000)
       });
       if (response.ok) {

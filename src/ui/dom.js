@@ -3,6 +3,9 @@ export const DOM = {
   // Navigation
   menuItems: document.querySelectorAll('.menu-item'),
   views: document.querySelectorAll('.content-view'),
+  sidebar: document.getElementById('sidebar'),
+  hamburgerBtn: document.getElementById('hamburger-btn'),
+  sidebarBackdrop: document.getElementById('sidebar-backdrop'),
   sidebarPlaylists: document.getElementById('sidebar-playlists-list'),
   
   // Search
@@ -135,6 +138,8 @@ export const DOM = {
   settingsImportBtn: document.getElementById('settings-import-btn'),
   settingsImportFile: document.getElementById('settings-import-file'),
   settingsFullsongToggle: document.getElementById('settings-fullsong-toggle'),
+  settingsBackendUrl: document.getElementById('settings-backend-url'),
+  settingsBackendSave: document.getElementById('settings-backend-save'),
 
   partyRoomBtn: document.getElementById('party-room-btn'),
 

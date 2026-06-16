@@ -126,17 +126,33 @@ class AuraStreamDB {
     if (!this.cloudSyncEnabled || !this.currentUser || typeof firebase === 'undefined') return false;
     
     console.log('Syncing data to Firebase Firestore for user:', this.currentUser.id);
-    const data = await this.exportData();
     
     try {
-      const db = firebase.firestore();
-      // Store user's exported data blob in firestore
-      // In a real production app, we'd sync individual playlists and favorites separately to avoid 1MB document limits,
-      // but for this MVP, we stringify the local export.
-      await db.collection('users').doc(this.currentUser.id).set({
-        syncData: data,
+      const fireDb = firebase.firestore();
+      const batch = fireDb.batch();
+      
+      const playlists = await this.getPlaylists();
+      const favorites = await this.getFavorites();
+
+      // Push playlists
+      for (const p of playlists) {
+        const docRef = fireDb.collection('users').doc(this.currentUser.id).collection('playlists').doc(p.id.toString());
+        batch.set(docRef, p);
+      }
+      
+      // Push favorites
+      for (const f of favorites) {
+        const docRef = fireDb.collection('users').doc(this.currentUser.id).collection('favorites').doc(f.id.toString());
+        batch.set(docRef, f);
+      }
+      
+      await batch.commit();
+      
+      // Update lastSynced timestamp
+      await fireDb.collection('users').doc(this.currentUser.id).set({
         lastSynced: firebase.firestore.FieldValue.serverTimestamp()
-      });
+      }, { merge: true });
+
       console.log('Firebase Cloud sync complete!');
       return true;
     } catch (error) {
@@ -145,18 +161,63 @@ class AuraStreamDB {
     }
   }
 
+  async fetchFromCloud() {
+    if (!this.cloudSyncEnabled || !this.currentUser || typeof firebase === 'undefined') return false;
+    
+    console.log('Fetching data from Firebase Firestore for user:', this.currentUser.id);
+    
+    try {
+      const fireDb = firebase.firestore();
+      
+      // Legacy import data fallback check
+      const doc = await fireDb.collection('users').doc(this.currentUser.id).get();
+      if (doc.exists && doc.data().syncData) {
+        await this.importData(doc.data().syncData);
+        // Clear old syncData to enforce new subcollection model
+        await fireDb.collection('users').doc(this.currentUser.id).update({ syncData: firebase.firestore.FieldValue.delete() });
+        await this.syncToCloud(); // Push back as subcollections
+      }
+      
+      // Fetch playlists
+      const pSnapshot = await fireDb.collection('users').doc(this.currentUser.id).collection('playlists').get();
+      if (!pSnapshot.empty) {
+        const pStore = await this.getStore('playlists', 'readwrite');
+        pSnapshot.forEach(doc => {
+          pStore.put(doc.data());
+        });
+      }
+      
+      // Fetch favorites
+      const fSnapshot = await fireDb.collection('users').doc(this.currentUser.id).collection('favorites').get();
+      if (!fSnapshot.empty) {
+        const fStore = await this.getStore('favorites', 'readwrite');
+        fSnapshot.forEach(doc => {
+          fStore.put(doc.data());
+        });
+      }
+
+      console.log('Firebase Cloud fetch complete!');
+      window.dispatchEvent(new Event('aurastream:cloud-synced'));
+      return true;
+    } catch (error) {
+      console.error("Firebase Fetch Error:", error);
+      return false;
+    }
+  }
+
   async loadUserSession() {
     if (typeof firebase !== 'undefined') {
       // Use Firebase observer
-      firebase.auth().onAuthStateChanged((user) => {
+      firebase.auth().onAuthStateChanged(async (user) => {
         if (user) {
           this.currentUser = { id: user.uid, email: user.email, name: user.email.split('@')[0] };
           this.cloudSyncEnabled = true;
-          this.saveSetting('currentUser', this.currentUser);
+          await this.saveSetting('currentUser', this.currentUser);
+          await this.fetchFromCloud();
         } else {
           this.currentUser = null;
           this.cloudSyncEnabled = false;
-          this.saveSetting('currentUser', null);
+          await this.saveSetting('currentUser', null);
         }
       });
     }
@@ -285,8 +346,8 @@ class AuraStreamDB {
    * Toggles a track favorite state.
    */
   async toggleFavorite(track) {
-    const store = await this.getStore('favorites', 'readwrite');
     const isFav = await this.isFavorite(track.id);
+    const store = await this.getStore('favorites', 'readwrite');
 
     return new Promise((resolve, reject) => {
       let request;

@@ -6,201 +6,11 @@
 
 import { db } from './db.js';
 import { api } from './api.js';
-
-// --- Global Player State ---
-const state = {
-  audio: null,
-  currentTrack: null,
-  queue: [],
-  queueIndex: -1,
-  isPlaying: false,
-  isShuffle: false,
-  repeatMode: 'none', // 'none' | 'one' | 'all'
-  volume: 0.7,
-  isMuted: false,
-  lastVolume: 0.7,
-  activeView: 'home',
-  activePlaylistId: null,
-  searchSourceFilter: 'all', // 'all' | 'local' | 'audius' | 'itunes' | 'youtube'
-  
-  // Multi-Player Engines
-  activePlayerEngine: 'html5', // 'html5' | 'youtube' | 'soundcloud'
-  ytPlayer: null,
-  ytPlayerReady: false,
-  scWidget: null,
-  scWidgetReady: false,
-
-  // Web Audio Visualizer & EQ variables
-  audioContext: null,
-  analyser: null,
-  sourceNode: null,
-  eqBassNode: null,
-  eqTrebleNode: null,
-  reverbNode: null,
-  pannerNode: null,
-  spatialEnabled: false,
-  forceFullSongs: true, // Default to finding full songs on YouTube
-  spatialAngle: 0,
-  visualizerActive: false,
-  visualizerStyle: 0, // Palettes: 0: Purple/Indigo, 1: Cyan/Emerald, 2: Magenta/Pink
-  animationFrameId: null,
-  
-  // Remix Mode
-  remixMode: 'normal', // 'normal' | 'nightcore' | 'slowed'
-  
-  // Karaoke Mode
-  currentLyrics: [], // Array of { time, text }
-  
-  // Transitions
-  fadeInterval: null
-};
-
-// --- DOM Cache ---
-const DOM = {
-  // Navigation
-  menuItems: document.querySelectorAll('.menu-item'),
-  views: document.querySelectorAll('.content-view'),
-  sidebarPlaylists: document.getElementById('sidebar-playlists-list'),
-  
-  // Search
-  globalSearch: document.getElementById('global-search-input'),
-  voiceSearchBtn: document.getElementById('voice-search-btn'),
-  searchTitleText: document.getElementById('search-title-text'),
-  searchResultsList: document.getElementById('search-results-list'),
-  filterAll: document.getElementById('filter-search-all'),
-  filterLocal: document.getElementById('filter-search-local'),
-  filterAudius: document.getElementById('filter-search-audius'),
-  filterItunes: document.getElementById('filter-search-itunes'),
-  filterYoutube: document.getElementById('filter-search-youtube'),
-  
-  // Discover View
-  trendingGrid: document.getElementById('trending-grid'),
-  homeLocalGrid: document.getElementById('home-local-grid'),
-  trendingRefreshBtn: document.getElementById('trending-refresh-btn'),
-  heroPlayBtn: document.getElementById('hero-play-trending-btn'),
-  homeGotoUploadBtn: document.getElementById('home-goto-upload-btn'),
-  
-  // Favorites View
-  favoritesList: document.getElementById('favorites-list'),
-  playAllFavsBtn: document.getElementById('play-all-favorites-btn'),
-  
-  // Playlists View
-  playlistsGrid: document.getElementById('playlists-grid'),
-  createPlaylistBtn: document.getElementById('create-playlist-btn'),
-  playlistDetailContent: document.getElementById('playlist-detail-content'),
-  
-  // Upload View
-  dropzone: document.getElementById('file-dropzone'),
-  audioFileInput: document.getElementById('audio-file-input'),
-  browseFilesBtn: document.getElementById('browse-files-btn'),
-  uploadForm: document.getElementById('upload-form'),
-  uploadTitle: document.getElementById('upload-title'),
-  uploadArtist: document.getElementById('upload-artist'),
-  uploadAlbum: document.getElementById('upload-album'),
-  uploadGenre: document.getElementById('upload-genre'),
-  uploadCoverInput: document.getElementById('upload-cover'),
-  browseCoverBtn: document.getElementById('browse-cover-btn'),
-  coverPreviewFilename: document.getElementById('cover-preview-filename'),
-  uploadFeedback: document.getElementById('upload-file-feedback'),
-  uploadSubmitBtn: document.getElementById('upload-submit-btn'),
-  uploadedTracksList: document.getElementById('uploaded-tracks-list'),
-  deleteAllLocalBtn: document.getElementById('delete-all-local-btn'),
-  
-  // Player Bar
-  playerCover: document.getElementById('player-track-cover'),
-  playerTitle: document.getElementById('player-track-title'),
-  playerArtist: document.getElementById('player-track-artist'),
-  playerFavBtn: document.getElementById('player-track-fav-btn'),
-  playerPlayBtn: document.getElementById('player-play-btn'),
-  playerPrevBtn: document.getElementById('player-prev-btn'),
-  playerNextBtn: document.getElementById('player-next-btn'),
-  playerShuffleBtn: document.getElementById('player-shuffle-btn'),
-  playerRepeatBtn: document.getElementById('player-repeat-btn'),
-  playerTimeCurrent: document.getElementById('player-time-current'),
-  playerTimeDuration: document.getElementById('player-time-duration'),
-  playerTimelineContainer: document.getElementById('player-timeline-container'),
-  playerTimelineBar: document.getElementById('player-timeline-bar'),
-  playerVolumeBtn: document.getElementById('player-volume-btn'),
-  playerVolumeSlider: document.getElementById('player-volume-slider'),
-  playerVolumeBar: document.getElementById('player-volume-bar'),
-  playerToggleVisBtn: document.getElementById('player-toggle-vis-btn'),
-  headerVisualizerBtn: document.getElementById('header-visualizer-btn'),
-  playerQueueBtn: document.getElementById('player-queue-btn'),
-  
-  // Floating Video Card (YouTube)
-  floatingVideoPlayer: document.getElementById('floating-video-player'),
-  videoDragHandle: document.getElementById('video-player-drag-handle'),
-  videoMinimizeBtn: document.getElementById('video-minimize-btn'),
-  videoCloseBtn: document.getElementById('video-close-btn'),
-  
-  // Visualizer View
-  visCover: document.getElementById('vis-cover'),
-  visDiscOuter: document.getElementById('vis-disc-outer'),
-  visTitle: document.getElementById('vis-title'),
-  visArtist: document.getElementById('vis-artist'),
-  visSourceTag: document.getElementById('vis-source-tag'),
-  visDurationTag: document.getElementById('vis-duration-tag'),
-  visCanvas: document.getElementById('visualizer-canvas'),
-  toggleVisStyleBtn: document.getElementById('toggle-vis-style'),
-  
-  // Modals
-  modalCreatePlaylist: document.getElementById('modal-create-playlist'),
-  modalCreatePlaylistClose: document.getElementById('modal-create-playlist-close'),
-  modalCreatePlaylistCancel: document.getElementById('modal-create-playlist-cancel'),
-  createPlaylistFormSubmit: document.getElementById('create-playlist-form'),
-  
-  modalAddToPlaylist: document.getElementById('modal-add-to-playlist'),
-  modalAddToPlaylistClose: document.getElementById('modal-add-playlist-close'),
-  modalAddToPlaylistCancel: document.getElementById('modal-add-playlist-cancel'),
-  addPlaylistOptionsContainer: document.getElementById('add-playlist-options-container'),
-  
-  // New Modals (Lyrics, EQ, Settings)
-  playerLyricsBtn: document.getElementById('player-lyrics-btn'),
-  modalLyrics: document.getElementById('modal-lyrics'),
-  modalLyricsClose: document.getElementById('modal-lyrics-close'),
-  lyricsContent: document.getElementById('lyrics-content'),
-  
-  playerEqBtn: document.getElementById('player-eq-btn'),
-  modalEq: document.getElementById('modal-eq'),
-  modalEqClose: document.getElementById('modal-eq-close'),
-  eqBass: document.getElementById('eq-bass'),
-  eqTreble: document.getElementById('eq-treble'),
-  eqBassVal: document.getElementById('eq-bass-val'),
-  eqTrebleVal: document.getElementById('eq-treble-val'),
-  eqSpatialToggle: document.getElementById('eq-spatial-toggle'),
-  eqResetBtn: document.getElementById('eq-reset-btn'),
-  remixRadios: document.getElementsByName('remix_mode'),
-
-  sidebarSettingsBtn: document.getElementById('sidebar-settings-btn'),
-  sidebarLoginBtn: document.getElementById('sidebar-login-btn'),
-  modalSettings: document.getElementById('modal-settings'),
-  modalSettingsClose: document.getElementById('modal-settings-close'),
-  modalLogin: document.getElementById('modal-login'),
-  modalLoginClose: document.getElementById('modal-login-close'),
-  loginEmailInput: document.getElementById('login-email'),
-  loginPasswordInput: document.getElementById('login-password'),
-  loginSubmitBtn: document.getElementById('login-submit-btn'),
-  registerSubmitBtn: document.getElementById('register-submit-btn'),
-  modalProfile: document.getElementById('modal-profile'),
-  modalProfileClose: document.getElementById('modal-profile-close'),
-  profileNameText: document.getElementById('profile-name-text'),
-  profileEmailText: document.getElementById('profile-email-text'),
-  profileSyncBtn: document.getElementById('profile-sync-btn'),
-  profileEditBtn: document.getElementById('profile-edit-btn'),
-  profileLogoutBtn: document.getElementById('profile-logout-btn'),
-  settingsExportBtn: document.getElementById('settings-export-btn'),
-  settingsImportBtn: document.getElementById('settings-import-btn'),
-  settingsImportFile: document.getElementById('settings-import-file'),
-  settingsFullsongToggle: document.getElementById('settings-fullsong-toggle'),
-
-  partyRoomBtn: document.getElementById('party-room-btn'),
-
-  // Stats View
-  statsContainer: document.getElementById('stats-content-container'),
-
-  // Toast
-  toastContainer: document.getElementById('toast-container')
-};
+import { state } from './state.js';
+import { DOM } from '../ui/dom.js';
+import { showToast, formatTime, parseLRC, fadeAudioVolume } from '../utils/utils.js';
+import { loadYouTubeIframe, playYouTubeVideo, stopYouTubeVideo, resolveYouTubeVideoId, getInvidiousAudioUrl } from '../audio/youtube-engine.js';
+import { initAudioEngine, initWebAudioContext, applyRemixMode } from '../audio/audio-player.js';
 
 // Store current audio blob URLs to release memory leaks later
 const activeBlobUrls = new Map();
@@ -214,86 +24,7 @@ let uploadedFileData = {
   coverDataUrl: ''
 };
 
-// --- Toast System ---
-function showToast(message, type = 'info') {
-  const toast = document.createElement('div');
-  toast.className = `toast ${type}`;
-  toast.innerHTML = `
-    <i class="fa-solid ${type === 'success' ? 'fa-circle-check' : type === 'error' ? 'fa-triangle-exclamation' : 'fa-circle-info'}"></i>
-    <span>${message}</span>
-  `;
-  DOM.toastContainer.appendChild(toast);
-  
-  setTimeout(() => toast.classList.add('active'), 50);
-  
-  setTimeout(() => {
-    toast.classList.remove('active');
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
-}
 
-// --- Helper Functions ---
-function formatTime(seconds) {
-  if (isNaN(seconds) || seconds === null) return '0:00';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-}
-
-// --- LRC Parser ---
-function parseLRC(lrcText) {
-  const lines = lrcText.split('\n');
-  const parsed = [];
-  const timeRegex = /\[(\d{2}):(\d{2}\.\d{2,3})\]/;
-  lines.forEach(line => {
-    const match = timeRegex.exec(line);
-    if (match) {
-      const minutes = parseInt(match[1]);
-      const seconds = parseFloat(match[2]);
-      const text = line.replace(timeRegex, '').trim();
-      parsed.push({
-        time: (minutes * 60) + seconds,
-        text: text || '♪'
-      });
-    }
-  });
-  return parsed;
-}
-
-// --- Smooth DJ Transition Helper ---
-function fadeAudioVolume(targetVolume, durationMs = 1000) {
-  return new Promise(resolve => {
-    if (state.activePlayerEngine !== 'html5' || !state.audio) return resolve();
-    
-    // Clear any existing fade intervals
-    if (state.fadeInterval) {
-      clearInterval(state.fadeInterval);
-      state.fadeInterval = null;
-    }
-
-    const steps = 20;
-    const stepTime = durationMs / steps;
-    const currentVol = state.audio.volume;
-    const diff = targetVolume - currentVol;
-    const stepVol = diff / steps;
-    
-    if (diff === 0) return resolve();
-
-    let currentStep = 0;
-    state.fadeInterval = setInterval(() => {
-      currentStep++;
-      let newVol = currentVol + (stepVol * currentStep);
-      newVol = Math.max(0, Math.min(1, newVol));
-      state.audio.volume = newVol;
-      
-      if (currentStep >= steps) {
-        clearInterval(state.fadeInterval);
-        state.fadeInterval = null;
-        resolve();
-      }
-    }, stepTime);
-  });
-}
 
 // --- View Router ---
 function navigateToView(viewId, params = {}) {
@@ -341,255 +72,9 @@ function navigateToView(viewId, params = {}) {
   }
 }
 
-// --- Playback Engine Core ---
-function initAudioEngine() {
-  state.audio = new Audio();
-  state.audio.crossOrigin = 'anonymous'; // Enable CORS for remote analysis
-  
-  DOM.playerVolumeBar.style.width = `${state.volume * 100}%`;
-  state.audio.volume = state.volume;
-
-  // HTML5 audio engine event listeners
-  state.audio.addEventListener('play', () => {
-    if (state.activePlayerEngine === 'html5') {
-      state.isPlaying = true;
-      updatePlaybackControlsUI();
-    }
-  });
-
-  state.audio.addEventListener('pause', () => {
-    if (state.activePlayerEngine === 'html5') {
-      state.isPlaying = false;
-      updatePlaybackControlsUI();
-    }
-  });
-
-  state.audio.addEventListener('ended', () => {
-    if (state.activePlayerEngine === 'html5') {
-      handleTrackEnded();
-    }
-  });
-
-  state.audio.addEventListener('error', async (e) => {
-    if (state.activePlayerEngine === 'html5') {
-      console.warn('Audio playback error on HTML5:', e);
-      
-      // Fallback to YouTube Iframe Player if the stream fails
-      if (state.currentTrack && (state.currentTrack.source === 'youtube' || state.currentTrack.source === 'itunes')) {
-        showToast('Local stream unreachable. Falling back to YouTube Player...', 'warning');
-        
-        try {
-          let videoId;
-          if (state.currentTrack.source === 'youtube') {
-            videoId = state.currentTrack.streamUrl;
-          } else {
-            // For iTunes, get video ID
-            videoId = await resolveYouTubeVideoId(state.currentTrack.artist, state.currentTrack.title);
-          }
-            
-          if (videoId) {
-            state.audio.src = ''; // Clear broken source
-            state.activePlayerEngine = 'youtube';
-            DOM.floatingVideoPlayer.classList.add('active');
-            playYouTubeVideo(videoId);
-            return; // Successfully diverted to youtube player
-          }
-        } catch (err) {
-          console.error('Fallback resolution failed:', err);
-        }
-        
-        // If everything fails and it's iTunes, play 30s preview
-        if (state.currentTrack.source === 'itunes' && state.currentTrack.streamUrl && state.currentTrack.streamUrl.includes('apple.com')) {
-          showToast('Playing 30-sec preview instead.', 'warning');
-          state.audio.src = state.currentTrack.streamUrl;
-          state.audio.load();
-          state.audio.play().catch(err => console.error(err));
-          return;
-        }
-      }
-      
-      showToast('Failed to stream audio file.', 'error');
-      state.isPlaying = false;
-      updatePlaybackControlsUI();
-    }
-  });
-
-  // Bootstrap SoundCloud SDK Widget
-  const scIframe = document.getElementById('soundcloud-widget-iframe');
-  try {
-    state.scWidget = SC.Widget(scIframe);
-    state.scWidget.bind(SC.Widget.Events.READY, () => {
-      state.scWidgetReady = true;
-      state.scWidget.setVolume(state.volume * 100);
-      console.log('SoundCloud Widget connected successfully');
-    });
-
-    state.scWidget.bind(SC.Widget.Events.PLAY, () => {
-      if (state.activePlayerEngine === 'soundcloud') {
-        state.isPlaying = true;
-        updatePlaybackControlsUI();
-      }
-    });
-
-    state.scWidget.bind(SC.Widget.Events.PAUSE, () => {
-      if (state.activePlayerEngine === 'soundcloud') {
-        state.isPlaying = false;
-        updatePlaybackControlsUI();
-      }
-    });
-
-    state.scWidget.bind(SC.Widget.Events.FINISH, () => {
-      if (state.activePlayerEngine === 'soundcloud') {
-        handleTrackEnded();
-      }
-    });
-  } catch (err) {
-    console.warn('SoundCloud widget API not available:', err);
-  }
-
-  // Bootstrap YouTube IFrame (simple direct src approach - no JS API needed)
-  loadYouTubeIframe();
-  
-  // Start general polling loop for timeline tracking (unifies YT, SoundCloud & HTML5 progress)
-  startTimelineTrackerLoop();
-}
-
-/**
- * Loads a YouTube video using direct iframe src (no JS API needed).
- * This is more reliable than the YT.Player JS API.
- */
-function loadYouTubeIframe() {
-  // Create the iframe element inside the container
-  const container = document.getElementById('youtube-player-container');
-  if (!container) return;
-
-  const iframe = document.createElement('iframe');
-  iframe.id = 'yt-iframe';
-  iframe.style.cssText = 'width:100%;height:100%;border:none;';
-  iframe.allow = 'autoplay; encrypted-media';
-  iframe.allowFullscreen = true;
-  iframe.src = 'about:blank';
-  container.appendChild(iframe);
-  
-  state.ytPlayer = iframe; // Store reference to iframe element
-  state.ytPlayerReady = true; // Always ready since it's just an iframe
-  console.log('YouTube iframe player ready');
-}
-
-/**
- * Plays a YouTube video by updating the iframe src directly.
- * @param {string} videoId - YouTube video ID
- */
-function playYouTubeVideo(videoId) {
-  const iframe = document.getElementById('yt-iframe');
-  if (!iframe) return;
-  // Use embed URL with autoplay and no related videos
-  iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&iv_load_policy=3`;
-  state.ytPlayerReady = true;
-}
-
-/**
- * Stops YouTube iframe playback by clearing its src.
- */
-function stopYouTubeVideo() {
-  const iframe = document.getElementById('yt-iframe');
-  if (iframe) {
-    iframe.src = 'about:blank';
-  }
-}
 
 
-function startTimelineTrackerLoop() {
-  setInterval(() => {
-    if (!state.isPlaying || !state.currentTrack) return;
 
-    let currentPlayTime = 0;
-
-    if (state.activePlayerEngine === 'html5') {
-      if (state.audio && !isNaN(state.audio.duration)) {
-        currentPlayTime = state.audio.currentTime;
-        const duration = state.audio.duration;
-        const percent = (currentPlayTime / duration) * 100;
-        DOM.playerTimelineBar.style.width = `${percent}%`;
-        DOM.playerTimeCurrent.textContent = formatTime(currentPlayTime);
-        DOM.playerTimeDuration.textContent = formatTime(duration);
-      }
-    } else if (state.activePlayerEngine === 'youtube' && state.ytPlayerReady) {
-      // When using raw iframe embed, we can't access getCurrentTime/getDuration
-      // The iframe sandbox blocks cross-origin JS API access.
-      // We show the track's known duration and skip live progress.
-      try {
-        if (typeof state.ytPlayer.getCurrentTime === 'function') {
-          currentPlayTime = state.ytPlayer.getCurrentTime();
-          const duration = state.ytPlayer.getDuration();
-          if (duration > 0) {
-            const percent = (currentPlayTime / duration) * 100;
-            DOM.playerTimelineBar.style.width = `${percent}%`;
-            DOM.playerTimeCurrent.textContent = formatTime(currentPlayTime);
-            DOM.playerTimeDuration.textContent = formatTime(duration);
-          }
-        } else if (state.currentTrack && state.currentTrack.duration) {
-          // Show known duration from search metadata
-          DOM.playerTimeDuration.textContent = formatTime(state.currentTrack.duration);
-        }
-      } catch (err) {
-        // ignore iframe cross-origin access errors
-      }
-    } else if (state.activePlayerEngine === 'soundcloud' && state.scWidgetReady) {
-      state.scWidget.getPosition((ms) => {
-        state.scWidget.getDuration((durationMs) => {
-          currentPlayTime = ms / 1000;
-          const duration = durationMs / 1000;
-          if (duration > 0) {
-            const percent = (currentPlayTime / duration) * 100;
-            DOM.playerTimelineBar.style.width = `${percent}%`;
-            DOM.playerTimeCurrent.textContent = formatTime(currentPlayTime);
-            DOM.playerTimeDuration.textContent = formatTime(duration);
-          }
-          syncLyricsUI(currentPlayTime);
-        });
-      });
-    }
-
-    if (state.activePlayerEngine !== 'soundcloud') {
-      syncLyricsUI(currentPlayTime);
-    }
-
-    // 8D SPATIAL AUDIO ANIMATION
-    if (state.spatialEnabled && state.pannerNode && state.activePlayerEngine === 'html5') {
-      state.spatialAngle += 0.05; // speed of rotation
-      const x = Math.sin(state.spatialAngle) * 3;
-      const z = Math.cos(state.spatialAngle) * 3;
-      state.pannerNode.positionX.value = x;
-      state.pannerNode.positionZ.value = z;
-    }
-
-    // IMMERSIVE BEAT-SYNC BACKGROUND
-    if (state.analyser && state.activePlayerEngine === 'html5') {
-      const bufferLength = state.analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
-      state.analyser.getByteFrequencyData(dataArray);
-      
-      // Calculate bass energy (first 10 bins)
-      let bassSum = 0;
-      for (let i = 0; i < 10; i++) {
-        bassSum += dataArray[i];
-      }
-      const bassAvg = bassSum / 10;
-      const bassEnergy = bassAvg / 255;
-      
-      const beatScale = 1 + (bassEnergy * 0.05); // max 1.05
-      const beatGlow = bassEnergy * 0.4; // max 0.4
-      
-      document.documentElement.style.setProperty('--beat-scale', beatScale);
-      document.documentElement.style.setProperty('--beat-glow', beatGlow);
-    } else {
-      document.documentElement.style.setProperty('--beat-scale', 1);
-      document.documentElement.style.setProperty('--beat-glow', 0);
-    }
-
-  }, 250);
-}
 
 function syncLyricsUI(currentTime) {
   if (!state.currentLyrics || state.currentLyrics.length === 0) return;
@@ -628,200 +113,7 @@ function syncLyricsUI(currentTime) {
   }
 }
 
-// Resolves YouTube video ID using a multi-stage approach (Invidious search API, Piped API, and YouTube scraping as final fallback)
-async function resolveYouTubeVideoId(artist, title) {
-  const query = encodeURIComponent(`${artist} - ${title} official audio`);
-  console.log(`Resolving video ID for: ${artist} - ${title}`);
-  
-  const invidiousHosts = [
-    'https://yt.chocolatemoo53.com',
-    'https://inv.thepixora.com',
-    'https://invidious.tiekoetter.com',
-    'https://invidious.lunar.icu',
-    'https://invidious.nerdvpn.de'
-  ];
 
-  const pipedHosts = [
-    'https://pipedapi.kavin.rocks',
-    'https://pipedapi.tokhmi.xyz',
-    'https://api.piped.yt'
-  ];
-
-  const proxies = [
-    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, // Try allorigins first (doesn't block payload sizes)
-    (url) => `https://corsproxy.io/?${url}`
-  ];
-
-  // Stage 1: Try Invidious API search (extremely light JSON payload)
-  for (const host of invidiousHosts) {
-    const searchUrl = `${host}/api/v1/search?q=${query}&type=video`;
-    
-    // Try direct fetch first (for users running local setups or instances supporting CORS)
-    try {
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 2500);
-      const response = await fetch(searchUrl, { signal: controller.signal });
-      clearTimeout(id);
-      
-      if (response.ok) {
-        const json = await response.json();
-        if (Array.isArray(json) && json.length > 0) {
-          const video = json.find(item => item.type === 'video' || item.videoId);
-          if (video && video.videoId) {
-            console.log(`Resolved video ID "${video.videoId}" via direct Invidious search on ${host}`);
-            return video.videoId;
-          }
-        }
-      }
-    } catch (err) {
-      console.warn(`Direct Invidious search failed on ${host}, trying proxies...`);
-    }
-
-    // Try via CORS proxies
-    for (const getProxyUrl of proxies) {
-      try {
-        const proxyUrl = getProxyUrl(searchUrl);
-        const controller = new AbortController();
-        const id = setTimeout(() => controller.abort(), 4000); // 4s timeout for proxies
-        const response = await fetch(proxyUrl, { signal: controller.signal });
-        clearTimeout(id);
-        
-        if (response.ok) {
-          const json = await response.json();
-          if (Array.isArray(json) && json.length > 0) {
-            const video = json.find(item => item.type === 'video' || item.videoId);
-            if (video && video.videoId) {
-              console.log(`Resolved video ID "${video.videoId}" via proxied Invidious search on ${host}`);
-              return video.videoId;
-            }
-          }
-        }
-      } catch (err) {
-        console.warn(`Proxied Invidious search failed on ${host} via proxy:`, err);
-      }
-    }
-  }
-
-  // Stage 2: Try Piped API search
-  for (const host of pipedHosts) {
-    const searchUrl = `${host}/search?q=${query}&filter=videos`;
-    
-    // Try direct fetch first
-    try {
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 2500);
-      const response = await fetch(searchUrl, { signal: controller.signal });
-      clearTimeout(id);
-      
-      if (response.ok) {
-        const json = await response.json();
-        const items = json.streamItems || [];
-        const videoItem = items.find(item => item.type === 'video');
-        if (videoItem && videoItem.url) {
-          const match = videoItem.url.match(/[?&]v=([^&#]*)/);
-          const videoId = match ? match[1] : videoItem.url.replace('/watch?v=', '');
-          if (videoId) {
-            console.log(`Resolved video ID "${videoId}" via direct Piped search on ${host}`);
-            return videoId;
-          }
-        }
-      }
-    } catch (err) {
-      console.warn(`Direct Piped fetch failed on ${host}, trying proxies...`);
-    }
-
-    // Try via CORS proxies
-    for (const getProxyUrl of proxies) {
-      try {
-        const proxyUrl = getProxyUrl(searchUrl);
-        const controller = new AbortController();
-        const id = setTimeout(() => controller.abort(), 4000);
-        const response = await fetch(proxyUrl, { signal: controller.signal });
-        clearTimeout(id);
-        
-        if (response.ok) {
-          const json = await response.json();
-          const items = json.streamItems || [];
-          const videoItem = items.find(item => item.type === 'video');
-          if (videoItem && videoItem.url) {
-            const match = videoItem.url.match(/[?&]v=([^&#]*)/);
-            const videoId = match ? match[1] : videoItem.url.replace('/watch?v=', '');
-            if (videoId) {
-              console.log(`Resolved video ID "${videoId}" via proxied Piped search on ${host}`);
-              return videoId;
-            }
-          }
-        }
-      } catch (err) {
-        console.warn(`Proxied Piped fetch failed on ${host} via proxy:`, err);
-      }
-    }
-  }
-
-  // Stage 3: Fallback to YouTube scraping (only via AllOrigins to avoid 413 payload size blocks)
-  console.warn('Invidious and Piped resolution failed. Falling back to YouTube page scraping...');
-  const scrapeUrl = `https://www.youtube.com/results?search_query=${query}`;
-  try {
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(scrapeUrl)}`;
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), 5000); // 5s timeout for scraping
-    const response = await fetch(proxyUrl, { signal: controller.signal });
-    clearTimeout(id);
-
-    if (response.ok) {
-      const html = await response.text();
-      const match = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
-      if (match && match[1]) {
-        console.log(`Resolved video ID "${match[1]}" via YouTube scrape`);
-        return match[1];
-      }
-    }
-  } catch (err) {
-    console.warn('Scraping fallback failed:', err);
-  }
-  
-  return null;
-}
-
-// Global variable for Invidious host configuration
-let invidiousHost = null;
-const fallbackInvidiousHosts = [
-  'https://yt.chocolatemoo53.com',
-  'https://inv.thepixora.com',
-  'https://invidious.tiekoetter.com',
-  'https://invidious.lunar.icu',
-  'https://invidious.nerdvpn.de'
-];
-
-async function resolveInvidiousHost() {
-  if (invidiousHost) return invidiousHost;
-  try {
-    const response = await fetch('https://api.invidious.io/instances.json?sort_by=health');
-    if (response.ok) {
-      const instances = await response.json();
-      const healthy = instances
-        .map(item => item[1])
-        .filter(cfg => cfg.type === 'https' && cfg.monitor && cfg.monitor.status === 'up')
-        .map(cfg => cfg.uri);
-      
-      if (healthy && healthy.length > 0) {
-        invidiousHost = healthy[0];
-        console.log(`Resolved Invidious API host: ${invidiousHost}`);
-        return invidiousHost;
-      }
-    }
-  } catch (err) {
-    console.warn('Invidious bootstrap failed, trying fallbacks...');
-  }
-  
-  invidiousHost = fallbackInvidiousHosts[Math.floor(Math.random() * fallbackInvidiousHosts.length)];
-  console.log(`Using fallback Invidious host: ${invidiousHost}`);
-  return invidiousHost;
-}
-
-async function getInvidiousAudioUrl(videoId) {
-  return `http://localhost:8000/api/stream/${videoId}`;
-}
 
 async function playTrack(track, contextQueue = null) {
   try {
@@ -873,8 +165,10 @@ async function playTrack(track, contextQueue = null) {
           // Check if backend is reachable
           let backendAlive = false;
           try {
-            const probe = await fetch('http://localhost:8000/api/health', {
-              signal: AbortSignal.timeout(1500)
+            const backendBase = window.AURA_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:8000' : `http://${window.location.hostname}:8000`);
+            const probe = await fetch(`${backendBase}/api/health`, {
+              method: 'GET',
+              signal: AbortSignal.timeout(3000)
             });
             backendAlive = probe.ok;
           } catch (_) {
@@ -883,7 +177,8 @@ async function playTrack(track, contextQueue = null) {
 
           if (backendAlive) {
             // 🎵 Stream audio via backend proxy — pure HTML5 <audio>, no iframe!
-            const streamUrl = `http://localhost:8000/api/stream/${videoId}`;
+            const backendBase = window.AURA_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:8000' : `http://${window.location.hostname}:8000`);
+            const streamUrl = `${backendBase}/api/stream/${videoId}`;
             state.audio.src = streamUrl;
             state.audio.load();
             
@@ -1342,106 +637,6 @@ async function renderStatsView() {
   DOM.statsContainer.innerHTML = html;
 }
 
-// --- Reverb Impulse Synthesizer ---
-function createReverbImpulseResponse(audioContext) {
-  // Create a 2 second impulse response
-  const sampleRate = audioContext.sampleRate;
-  const length = sampleRate * 2.5; 
-  const impulse = audioContext.createBuffer(2, length, sampleRate);
-  
-  for (let i = 0; i < 2; i++) {
-    const channelData = impulse.getChannelData(i);
-    for (let j = 0; j < length; j++) {
-      // Exponential decay white noise
-      channelData[j] = (Math.random() * 2 - 1) * Math.pow(1 - j / length, 3);
-    }
-  }
-  return impulse;
-}
-
-// --- Web Audio Visualizer API ---
-function initWebAudioContext() {
-  if (state.audioContext) return;
-  
-  try {
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    state.audioContext = new AudioContextClass();
-    
-    state.analyser = state.audioContext.createAnalyser();
-    state.analyser.fftSize = 256;
-    
-    state.sourceNode = state.audioContext.createMediaElementSource(state.audio);
-    
-    // Equalizer Filters
-    state.eqBassNode = state.audioContext.createBiquadFilter();
-    state.eqBassNode.type = 'lowshelf';
-    state.eqBassNode.frequency.value = 150;
-    
-    state.eqTrebleNode = state.audioContext.createBiquadFilter();
-    state.eqTrebleNode.type = 'highshelf';
-    state.eqTrebleNode.frequency.value = 4000;
-
-    // Reverb Node (Convolver)
-    state.reverbNode = state.audioContext.createConvolver();
-    state.reverbNode.buffer = createReverbImpulseResponse(state.audioContext);
-    
-    // Panner Node (8D Audio)
-    state.pannerNode = state.audioContext.createPanner();
-    state.pannerNode.panningModel = 'HRTF';
-    state.pannerNode.distanceModel = 'inverse';
-    state.pannerNode.refDistance = 1;
-    state.pannerNode.maxDistance = 10000;
-    state.pannerNode.rolloffFactor = 1;
-    state.pannerNode.coneInnerAngle = 360;
-    state.pannerNode.coneOuterAngle = 0;
-    state.pannerNode.coneOuterGain = 0;
-    // Set listener to origin
-    if (state.audioContext.listener.positionX) {
-      state.audioContext.listener.positionX.value = 0;
-      state.audioContext.listener.positionY.value = 0;
-      state.audioContext.listener.positionZ.value = 0;
-    } else {
-      state.audioContext.listener.setPosition(0, 0, 0);
-    }
-    
-    // Dry/Wet Reverb Mixer (Gain)
-    state.reverbGainNode = state.audioContext.createGain();
-    state.reverbGainNode.gain.value = 0; // 0 = Dry (Normal), 0.5 = Wet (Slowed + Reverb)
-
-    state.dryGainNode = state.audioContext.createGain();
-    state.dryGainNode.gain.value = 1;
-
-    // Restore UI values if moved before playback started
-    if (DOM.eqBass) state.eqBassNode.gain.value = parseInt(DOM.eqBass.value) || 0;
-    if (DOM.eqTreble) state.eqTrebleNode.gain.value = parseInt(DOM.eqTreble.value) || 0;
-
-    // Connect routing graph:
-    // Source -> Bass -> Treble -> (Split to Dry and Reverb) -> Panner -> Analyser -> Destination
-    state.sourceNode.connect(state.eqBassNode);
-    state.eqBassNode.connect(state.eqTrebleNode);
-    
-    // Split
-    state.eqTrebleNode.connect(state.dryGainNode);
-    state.eqTrebleNode.connect(state.reverbNode);
-    
-    // Reverb to its gain
-    state.reverbNode.connect(state.reverbGainNode);
-    
-    // Merge Dry and Reverb -> Panner
-    state.dryGainNode.connect(state.pannerNode);
-    state.reverbGainNode.connect(state.pannerNode);
-    
-    // Panner -> Analyser -> Destination
-    state.pannerNode.connect(state.analyser);
-    state.analyser.connect(state.audioContext.destination);
-
-    // Apply remix mode if it was changed before playing
-    applyRemixMode(state.remixMode);
-
-  } catch (error) {
-    console.warn('Web Audio node CORS error. Visualizer running in mathematical simulation mode.', error);
-  }
-}
 
 function initVisualizerCanvas() {
   if (state.visualizerActive) return;
@@ -2598,43 +1793,6 @@ function makePlayerDraggable() {
   }
 }
 
-// --- Remix Modes (Speed & Pitch) ---
-function applyRemixMode(mode) {
-  state.remixMode = mode;
-  let rate = 1.0;
-  let reverbWet = 0;
-  let dryMix = 1;
-  let preservesPitch = true;
-
-  if (mode === 'nightcore') {
-    rate = 1.25;
-    preservesPitch = false;
-  } else if (mode === 'slowed') {
-    rate = 0.85;
-    preservesPitch = false;
-    reverbWet = 0.6;
-    dryMix = 0.8;
-  }
-
-  // Apply to HTML5 Audio
-  if (state.audio) {
-    state.audio.playbackRate = rate;
-    state.audio.preservesPitch = preservesPitch;
-    if (state.audio.webkitPreservesPitch !== undefined) state.audio.webkitPreservesPitch = preservesPitch;
-    if (state.audio.mozPreservesPitch !== undefined) state.audio.mozPreservesPitch = preservesPitch;
-  }
-
-  // Apply to YouTube
-  if (state.ytPlayerReady && state.ytPlayer.setPlaybackRate) {
-    state.ytPlayer.setPlaybackRate(rate);
-  }
-
-  // Apply to Reverb (Web Audio API)
-  if (state.reverbGainNode && state.dryGainNode) {
-    state.reverbGainNode.gain.setTargetAtTime(reverbWet, state.audioContext.currentTime, 0.1);
-    state.dryGainNode.gain.setTargetAtTime(dryMix, state.audioContext.currentTime, 0.1);
-  }
-}
 
 // --- Event Bindings & Bootstrap ---
 function bindEvents() {
@@ -3038,8 +2196,13 @@ function bindEvents() {
   });
 
   // Settings / Backup & Restore
-  DOM.sidebarSettingsBtn?.addEventListener('click', () => {
+  DOM.sidebarSettingsBtn?.addEventListener('click', async () => {
     DOM.settingsFullsongToggle.checked = state.forceFullSongs;
+    const currentBackend = await db.getSetting('backendUrl');
+    if (currentBackend) {
+      DOM.settingsBackendUrl.value = currentBackend;
+      window.AURA_BACKEND_URL = currentBackend;
+    }
     DOM.modalSettings.classList.add('active');
     if (window.innerWidth <= 768) closeMobileSidebar();
   });
@@ -3047,6 +2210,24 @@ function bindEvents() {
   DOM.settingsFullsongToggle.addEventListener('change', (e) => {
     state.forceFullSongs = e.target.checked;
     showToast(state.forceFullSongs ? 'Full songs enabled (YouTube lookup)' : 'Instant 30s previews enabled', 'info');
+  });
+
+  DOM.settingsBackendSave?.addEventListener('click', async () => {
+    const url = DOM.settingsBackendUrl.value.trim();
+    if (url) {
+      // Basic validation
+      if (!url.startsWith('http')) {
+        showToast('URL must start with http:// or https://', 'error');
+        return;
+      }
+      await db.saveSetting('backendUrl', url);
+      window.AURA_BACKEND_URL = url;
+      showToast('Backend URL saved', 'success');
+    } else {
+      await db.saveSetting('backendUrl', null);
+      window.AURA_BACKEND_URL = null;
+      showToast('Backend URL reset to auto-detect', 'info');
+    }
   });
 
   DOM.sidebarLoginBtn?.addEventListener('click', async () => {
@@ -3126,7 +2307,32 @@ function bindEvents() {
   });
   DOM.modalSettingsClose?.addEventListener('click', () => DOM.modalSettings.classList.remove('active'));
   DOM.modalSettings?.addEventListener('click', e => { if (e.target === DOM.modalSettings) DOM.modalSettings.classList.remove('active'); });
+
+
   
+  // --- AudioContext unlock on first user interaction ---
+  const unlockAudioContext = () => {
+    if (state.audioContext && state.audioContext.state === 'suspended') {
+      state.audioContext.resume().then(() => {
+        console.log('AudioContext resumed via user interaction.');
+      }).catch(err => console.warn(err));
+    } else if (!state.audioContext) {
+      // Create a dummy context just to unlock it, we'll configure it fully later
+      try {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        state.audioContext = new AudioContextClass();
+        state.audioContext.resume();
+      } catch (e) {
+        // ignore
+      }
+    }
+    // Remove listeners once unlocked
+    document.removeEventListener('click', unlockAudioContext);
+    document.removeEventListener('touchstart', unlockAudioContext);
+  };
+  document.addEventListener('click', unlockAudioContext);
+  document.addEventListener('touchstart', unlockAudioContext);
+
   DOM.settingsExportBtn?.addEventListener('click', async () => {
     try {
       const jsonStr = await db.exportData();
@@ -3309,16 +2515,49 @@ function bindEvents() {
   function urlParamsHasRoom() {
     return new URLSearchParams(window.location.search).get('room');
   }
+
+  // --- Offline Handling ---
+  window.addEventListener('offline', () => {
+    showToast('You are offline. Some features are disabled.', 'error');
+    DOM.globalSearch.disabled = true;
+    document.documentElement.style.setProperty('--primary', '#9ca3af'); // Gray out theme slightly
+  });
+
+  window.addEventListener('online', () => {
+    showToast('Back online! Syncing...', 'success');
+    DOM.globalSearch.disabled = false;
+    document.documentElement.style.setProperty('--primary', '#10b981'); // Restore theme
+    db.syncToCloud();
+  });
+
+  // Initial check
+  if (!navigator.onLine) {
+    DOM.globalSearch.disabled = true;
+  }
 }
 
 
 async function bootstrap() {
   console.log('Bootstrapping AuraStream multi-API application...');
-  initAudioEngine();
+  initAudioEngine(updatePlaybackControlsUI, handleTrackEnded, syncLyricsUI);
   bindEvents();
   
+  window.addEventListener('aurastream:cloud-synced', () => {
+    loadSidebarPlaylists();
+    if (state.activeView === 'favorites') loadFavoritesList();
+    if (state.activeView === 'playlists') loadPlaylistsGrid();
+    showToast('Data Synced with Cloud!', 'success');
+  });
+
   try {
     await db.init();
+    
+    // Load backend configuration
+    const savedBackend = await db.getSetting('backendUrl');
+    if (savedBackend) {
+      window.AURA_BACKEND_URL = savedBackend;
+    }
+
     loadLocalTracksHome();
     loadSidebarPlaylists();
     fetchTrendingTracks();
