@@ -69,9 +69,20 @@ class AuraStreamDB {
    * Helper to perform transactions.
    */
   async getStore(storeName, mode = 'readonly') {
-    const db = await this.init();
-    const transaction = db.transaction(storeName, mode);
-    return transaction.objectStore(storeName);
+    let db = await this.init();
+    try {
+      const transaction = db.transaction(storeName, mode);
+      return transaction.objectStore(storeName);
+    } catch (error) {
+      if (error.name === 'InvalidStateError' || error.message.includes('closing')) {
+        console.warn('IndexedDB connection closed. Reopening...');
+        this.db = null; // Force re-init
+        db = await this.init();
+        const transaction = db.transaction(storeName, mode);
+        return transaction.objectStore(storeName);
+      }
+      throw error;
+    }
   }
 
   // --- CLOUD AUTH & SYNC (FIREBASE) ---
