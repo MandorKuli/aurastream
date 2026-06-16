@@ -1,146 +1,53 @@
-# AuraStream 🎵
+<h1 align="center">
+  <img src="https://img.icons8.com/?size=100&id=102830&format=png&color=000000" alt="AuraStream Logo" width="80" />
+  <br>
+  AuraStream
+</h1>
 
-> **Premium music streaming web app** — stream Audius, iTunes, YouTube & your own uploads, all in your browser. No account. No tracking. No limits.
+<h4 align="center">Next-Generation Music Streaming Web Application</h4>
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-8b5cf6?style=for-the-badge&logo=github)](https://mandorkuli.github.io/aurastream/)
-[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
-[![PWA](https://img.shields.io/badge/PWA-Installable-blue?style=for-the-badge&logo=pwa)](https://mandorkuli.github.io/aurastream/)
+<p align="center">
+  <img src="https://img.shields.io/badge/Status-Active-success?style=flat-square" alt="Status">
+  <img src="https://img.shields.io/badge/Frontend-Vanilla_JS-f1e05a?style=flat-square" alt="JS">
+  <img src="https://img.shields.io/badge/Database-Firebase-FFCA28?style=flat-square" alt="Firebase">
+</p>
 
----
+<p align="center">
+  AuraStream is a premium, beautifully designed music streaming web app that allows you to play local files, search iTunes previews, create smart playlists, and enjoy music with an integrated visualizer and live equalizer.
+</p>
+
+<br>
 
 ## ✨ Features
 
-| Feature | Description |
-|---|---|
-| 🎧 **Audius Streaming** | Stream from the decentralized Audius music network |
-| 🍎 **iTunes Catalog** | Search & play 90M+ tracks via iTunes Search API |
-| ▶️ **YouTube Music** | Stream via floating YouTube mini player |
-| ☁️ **Serverless Cloud Sync** | 100% Serverless Cloud Auth & Sync powered by Firebase |
-| 🌍 **Global Party Room** | Listen together with friends in real-time via Firebase Realtime Database |
-| 📁 **Local Uploads (OPFS)** | Upload MP3/WAV — permanently stored locally via Origin Private File System |
-| 📊 **Live Visualizer** | Real-time 60fps audio spectrum visualizer (Web Audio API) |
-| ❤️ **Favorites & Playlists** | Save favorites and organize playlists locally & sync to cloud |
-| 📱 **PWA Ready** | Install as a native-like app on any device |
-| ⌨️ **Keyboard Shortcuts** | Full keyboard control (Space, arrows, M, F, V…) |
-| 🌐 **Works Offline** | Static assets cached via Service Worker |
-
----
+- 🎵 **Smart Audio Player** - Crossfade between tracks, continuous queue, and seamless playback.
+- 🔍 **iTunes Search Integration** - Search for millions of tracks, artists, and albums online.
+- 📂 **Local Audio Support** - Drag and drop your own `.mp3` or `.wav` files directly into the browser.
+- 🎛️ **Audio Equalizer & Visualizer** - Built-in 10-band EQ and live visualizer to enhance your listening experience.
+- 📱 **Fully Responsive** - Beautifully crafted UI that mimics premium apps on both Desktop and Mobile devices.
+- 🎤 **Lyrics Support** - Synchronized lyrics display (where available).
+- ☁️ **Cloud Database** - Save your favorite tracks and custom playlists via Firebase integration.
 
 ## 🚀 Quick Start
 
-No build step needed — it's pure HTML + Vanilla JS.
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/MandorKuli/aurastream.git
+   ```
+2. **Open `index.html`:**
+   Simply open the `index.html` file in your favorite modern browser. No complex build tools or `npm install` required! (Alternatively, run it via VSCode Live Server).
 
-```bash
-# Clone the repo
-git clone https://github.com/MandorKuli/aurastream.git
-cd aurastream
+## 🛠️ Technology Stack
 
-# Open in browser (any local server works)
-# Option 1: VS Code Live Server extension
-# Option 2: Python
-python -m http.server 8080
+- **HTML5 & CSS3** (CSS Grid, Flexbox, Glassmorphism UI)
+- **Vanilla JavaScript (ES6+)**
+- **Firebase** (Firestore Database)
+- **Web Audio API** (For EQ & Visualizations)
+- **iTunes Search API** (Data Source)
 
-# Option 3: Node.js
-npx serve .
-```
+## 🎨 Design
 
-Then open `http://localhost:8080` in your browser.
-
-> **Note:** The app uses ES Modules (`type="module"`), so it must be served via HTTP — not opened as a local `file://` URL.
-
----
-
-## 🗂️ Project Structure
-
-```
-aurastream/
-├── index.html            # Main HTML shell (Firebase SDKs, UI, Modals)
-├── style.css             # Complete design system (Glassmorphism, CSS vars)
-├── app.js                # Main application controller (Routing, Firebase RTDB)
-├── db.js                 # Database wrapper (OPFS, IndexedDB, Firebase Auth)
-├── api.js                # API clients (Audius, iTunes, YouTube proxy)
-├── firebase-config.js    # Firebase environment configuration
-├── manifest.json         # PWA web app manifest
-├── sw.js                 # Offline caching service worker
-└── assets/               # SVGs, icons, and static imagery
-```
+AuraStream focuses heavily on a **premium, glassmorphic aesthetic** with smooth micro-animations. The mobile layout mimics industry-leading music applications (like Apple Music and Spotify) with a sticky floating player bar, ensuring navigation is always at the user's fingertips.
 
 ---
-
-## ⌨️ Keyboard Shortcuts
-
-| Key | Action |
-|---|---|
-| `Space` | Play / Pause |
-| `←` | Previous track |
-| `→` | Next track |
-| `M` | Mute / Unmute |
-| `F` | Favorite current track |
-| `V` | Open Visualizer |
-| `S` | Toggle Shuffle |
-| `R` | Cycle Repeat mode |
-| `?` | Show shortcuts dialog |
-| `Esc` | Close modal / sidebar |
-
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│                   index.html                    │
-│   (Sidebar · Views · Player Bar · Modals)       │
-└──────────┬──────────────────────────────────────┘
-           │
-    ┌──────▼──────┐
-    │    app.js   │  ← Main controller
-    │  (state +   │     Player engines
-    │   routing)  │     Event handlers
-    └──┬───────┬──┘     Party Room (RTDB)
-       │       │
-  ┌────▼──┐ ┌──▼────┐ ┌─────────────┐
-  │ db.js │ │ api.js│ │  Firebase   │
-  │ OPFS  │ │Audius │ │  (Auth,     │
-  │IndexDB│ │iTunes │ │  Firestore) │
-  └───────┘ │YouTube│ └─────────────┘
-            └───────┘
-```
-
-**Player Engines:**
-- **HTML5 Audio** — Local uploads (OPFS), Audius streams, Piped API proxy
-- **YouTube iframe** — Floating mini player for robust YouTube video streaming
-- **Web Audio API** — EQ, Bass Boost, Reverb, and Spectrum Analysis
-
----
-
-## 🌐 Deployment (GitHub Pages)
-
-This app is deployed via GitHub Pages from the `main` branch.
-
-To deploy your own fork:
-1. Fork this repo
-2. Go to **Settings → Pages**
-3. Set source to `main` branch, root `/`
-4. Your app will be live at `https://<your-username>.github.io/aurastream/`
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-1. Fork the repo
-2. Create a feature branch: `git checkout -b feature/awesome-feature`
-3. Commit your changes: `git commit -m 'Add awesome feature'`
-4. Push to branch: `git push origin feature/awesome-feature`
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-MIT © [MandorKuli](https://github.com/MandorKuli) — see [LICENSE](LICENSE) for details.
-
----
-
-<p align="center">Made with ❤️ and lots of ☕</p>
+*Created with ❤️ by Kuli Coding (MandorKuli)*
