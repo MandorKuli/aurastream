@@ -104,6 +104,30 @@ export async function resolveYouTubeVideoId(artist, title) {
     (url) => `https://corsproxy.io/?${url}`
   ];
 
+  // Stage 0: Try Personal Custom Backend (Most Reliable)
+  if (window.AURA_BACKEND_URL) {
+    try {
+      const searchUrl = `${window.AURA_BACKEND_URL}/api/search/${query}`;
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 4000);
+      const response = await fetch(searchUrl, { signal: controller.signal });
+      clearTimeout(id);
+      
+      if (response.ok) {
+        const results = await response.json();
+        if (Array.isArray(results) && results.length > 0) {
+          const videoId = results[0].streamUrl; // backend sets video_id as streamUrl
+          if (videoId) {
+            console.log(`Resolved video ID "${videoId}" via Personal Backend`);
+            return videoId;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Personal backend search failed, falling back to public APIs...', err);
+    }
+  }
+
   // Stage 1: Try Invidious API search (extremely light JSON payload)
   for (const host of invidiousHosts) {
     const searchUrl = `${host}/api/v1/search?q=${query}&type=video`;
