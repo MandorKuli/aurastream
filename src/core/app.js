@@ -138,9 +138,9 @@ async function playTrack(track, contextQueue = null) {
     // Log the play for Aura Wrapped (Listening Stats)
     db.logTrackPlay(track);
 
-    // 2. Full Song Playback via Backend Audio Proxy (iTunes & YouTube)
-    // Uses yt-dlp backend to extract and proxy audio — NO mini player needed!
-    if ((track.source === 'itunes' || track.source === 'youtube') && state.forceFullSongs) {
+    // 2. Full Song Playback via Audio Proxy (iTunes & YouTube)
+    // Uses Piped API to extract and proxy audio — NO mini player needed!
+    if (track.source === 'itunes' || track.source === 'youtube') {
       state.activePlayerEngine = 'html5';
       DOM.floatingVideoPlayer.classList.remove('active');
       
