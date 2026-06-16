@@ -165,10 +165,8 @@ async function playTrack(track, contextQueue = null) {
           // Check if backend is reachable (now bypassed since we use public Piped API)
           let backendAlive = true;
 
-          if (backendAlive) {
-            // 🎵 Stream audio via backend proxy — pure HTML5 <audio>, no iframe!
-            const backendBase = window.AURA_BACKEND_URL || (window.location.hostname === 'localhost' ? 'http://localhost:8000' : `http://${window.location.hostname}:8000`);
-            const streamUrl = `${backendBase}/api/stream/${videoId}`;
+            // 🎵 Stream audio directly using Piped API — pure HTML5 <audio>, no iframe!
+            const streamUrl = await getInvidiousAudioUrl(videoId);
             state.audio.src = streamUrl;
             state.audio.load();
             
@@ -201,7 +199,7 @@ async function playTrack(track, contextQueue = null) {
                 state.audio.load();
                 state.audio.play().catch(err => console.warn(err));
               } else {
-                showToast('Playback failed. Is the backend running?', 'error');
+                showToast('Playback failed. Please try another track.', 'error');
               }
             });
             state.audio.volume = state.volume;
